@@ -9,7 +9,7 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     container:
-      image: greenmail
+      image: greenmail/standalone:1.6.12
       ports:
         - '3110:3110'
       env:
