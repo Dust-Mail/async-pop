@@ -3,6 +3,8 @@ name = "async-pop3"
 version = "0.1.0"
 edition = "2021"
 
+rust-version = "1.65.0"
+
 [dependencies]
 async-native-tls = {version = "0.4.0", default-features = false, features = ["runtime-tokio"] }
 bytes = "1.4.0"

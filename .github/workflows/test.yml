@@ -1,0 +1,41 @@
+name: Test package
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    container:
+      image: greenmail
+      ports:
+        - '3110:3110'
+      env:
+          GREENMAIL_OPTS: "-Dgreenmail.verbose -Dgreenmail.setup.test.pop3 -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=test:localhost"
+          JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Xmx512m"
+
+    steps:
+      - name: Download code
+        uses: actions/checkout@v2
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.65.0
+          override: true
+      
+      - name: Fetch
+        run: cargo fetch --locked
+      
+      - name: Build
+        run: cargo build
+
+      - name: Test
+        env:
+          SERVER: "greenmail"
+          PORT: "3110"
+          USERNAME: "test"
+          PASSWORD: "localhost"
+        run: cargo test
