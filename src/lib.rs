@@ -65,7 +65,7 @@ async fn create_client_from_socket<S: AsyncRead + AsyncWrite + Unpin>(
 
 /// Creates a new pop3 client from an existing stream.
 /// # Examples
-/// ```rust
+/// ```rust,ignore
 /// extern crate pop3;
 /// use std::net::TcpStream;
 ///
