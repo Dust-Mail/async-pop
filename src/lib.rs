@@ -34,7 +34,7 @@ pub struct Client<S: AsyncWrite + AsyncRead + Unpin> {
     marked_as_del: Vec<u32>,
     greeting: Option<String>,
     read_greeting: bool,
-    pub state: ClientState,
+    state: ClientState,
 }
 
 fn get_connection_timeout(timeout: Option<Duration>) -> Duration {
@@ -191,6 +191,24 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Client<S> {
         Ok(())
     }
 
+    /// ## UIDL
+    /// If an argument was given and the POP3 server issues a positive response with a line containing information for that message.
+    /// This line is called a "unique-id listing" for that message.
+    ///
+    /// If no argument was given and the POP3 server issues a positive response, then the response given is multi-line.
+    /// After the initial +OK, for each message in the maildrop, the POP3 server responds with a line containing information for that message.          This line is called a "unique-id listing" for that message.
+    ///
+    /// ### Arguments:
+    /// - a message-number (optional), which, if present, may NOT refer to a message marked as deleted.
+    ///
+    /// ### Restrictions:
+    /// - May only be given in the TRANSACTION state.
+    ///
+    /// ### Possible responses:
+    /// - +OK unique-id listing follows
+    /// - -ERR no such message
+    ///
+    /// https://www.rfc-editor.org/rfc/rfc1939#page-12
     pub async fn uidl(&mut self, msg_number: Option<u32>) -> Result<UniqueIDResponse> {
         self.check_capability(vec![Capability::Uidl])?;
 
@@ -458,10 +476,21 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Client<S> {
         Ok(())
     }
 
+    /// ## QUIT
+    /// Quits the session
+    ///
+    /// ### Arguments: none
+    ///
+    /// ### Restrictions: none
+    ///
+    /// ### Possible Responses:
+    /// - +OK
+    ///
+    /// https://www.rfc-editor.org/rfc/rfc1939#page-5
     pub async fn quit(&mut self) -> Result<()> {
         let socket = self.get_socket_mut()?;
 
-        let command = b"QUIT";
+        let command = "QUIT";
 
         socket.send_command(command, false).await?;
 
@@ -520,8 +549,8 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Client<S> {
 
     fn has_read_greeting(&self) -> Result<()> {
         if !self.read_greeting {
-            Err(types::Error::new(
-                types::ErrorKind::ServerFailedToGreet,
+            Err(Error::new(
+                ErrorKind::ServerFailedToGreet,
                 "Did not connect to the server correctly, as we did not get a greeting yet",
             ))
         } else {
@@ -540,9 +569,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Client<S> {
         Ok(response)
     }
 
+    /// The greeting that the POP server sent when the connection opened.
     pub fn greeting(&self) -> Option<&str> {
-        match &self.greeting {
-            Some(greeting) => Some(greeting.as_str()),
+        match self.greeting.as_ref() {
+            Some(greeting) => Some(greeting),
             None => None,
         }
     }
