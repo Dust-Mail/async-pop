@@ -35,8 +35,8 @@ jobs:
 
       - name: Test
         env:
-          SERVER: "greenmail"
+          SERVER: "localhost"
           PORT: "3110"
           USERNAME: "test"
-          PASSWORD: "0.0.0.0"
+          PASSWORD: "localhost"
         run: cargo test

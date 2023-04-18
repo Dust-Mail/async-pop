@@ -5,7 +5,6 @@ pub mod types;
 mod utils;
 
 use async_native_tls::{TlsConnector, TlsStream};
-use bytes::Bytes;
 use parse::{parse_capabilities, Parser};
 use socket::Socket;
 
