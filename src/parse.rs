@@ -1,70 +1,9 @@
 use crate::{
     constants::{ERR, LF, OK, SPACE},
-    types::{Capabilities, Capability, Error, ErrorKind, Result, Stats, UniqueID},
+    types::{Capabilities, Capability, Error, ErrorKind, Result},
 };
 
 use tokio::time::Duration;
-
-/// A simple struct to parse responses from the server
-pub struct Parser {
-    /// The response message that needs to be parsed
-    response: String,
-}
-
-impl Parser {
-    pub fn new<S: Into<String>>(response: S) -> Self {
-        Self {
-            response: response.into(),
-        }
-    }
-
-    /// Parse the message count and drop size from a given string
-    fn parse_counts_from_string(string: &str) -> Stats {
-        let mut split = string.split(SPACE);
-
-        let message_count: u32 = split.next().unwrap().trim().parse().unwrap();
-
-        let drop_size: u64 = split.next().unwrap().trim().parse().unwrap();
-
-        (message_count, drop_size)
-    }
-
-    pub fn to_stats(&self) -> Stats {
-        Self::parse_counts_from_string(&self.response)
-    }
-
-    pub fn to_stats_list(&self) -> Vec<Stats> {
-        let end_of_line = char::from_u32(LF as u32).unwrap();
-
-        let split = self.response.split(end_of_line).filter(|s| s.len() != 0);
-
-        split.map(Self::parse_counts_from_string).collect()
-    }
-
-    fn parse_unique_id_from_string(string: &str) -> UniqueID {
-        let mut split = string.split(SPACE);
-
-        let msg_id: u32 = split.next().unwrap().trim().parse().unwrap();
-
-        let unique_id = split.next().unwrap().trim().to_owned();
-
-        (msg_id, unique_id)
-    }
-
-    pub fn to_unique_id(&self) -> UniqueID {
-        Self::parse_unique_id_from_string(&self.response)
-    }
-
-    pub fn to_unique_id_list(&self) -> Vec<UniqueID> {
-        let end_of_line = char::from_u32(LF as u32).unwrap();
-
-        let split = self.response.split(end_of_line).filter(|s| s.len() != 0);
-
-        split
-            .map(|line| Self::parse_unique_id_from_string(line))
-            .collect()
-    }
-}
 
 pub fn parse_utf8_bytes(bytes: Vec<u8>) -> Result<String> {
     String::from_utf8(bytes).map_err(|err| {
@@ -79,6 +18,7 @@ pub fn parse_utf8_bytes(bytes: Vec<u8>) -> Result<String> {
 }
 
 pub fn parse_server_response<'a>(full_response: &'a str) -> Result<&'a str> {
+    // We add one so we also remove the space
     let ok_size = OK.len().saturating_add(1);
 
     if full_response.len() < ok_size {
@@ -89,8 +29,6 @@ pub fn parse_server_response<'a>(full_response: &'a str) -> Result<&'a str> {
     };
 
     if full_response.starts_with(OK) {
-        // We add one so we also remove the space
-
         let response = match full_response.get(ok_size..) {
             Some(response) => response,
             _ => unreachable!(),
@@ -183,7 +121,7 @@ mod test {
 
     use crate::types::Capability;
 
-    use super::parse_capabilities;
+    use super::{parse_capabilities, parse_server_response};
 
     #[test]
     fn test_parse_capabilities() {
@@ -198,5 +136,50 @@ mod test {
         let parsed_capabilities = parse_capabilities(to_parse);
 
         assert_eq!(parsed_capabilities, to_match);
+
+        let to_parse = "";
+
+        let parsed_capabilities = parse_capabilities(to_parse);
+
+        assert_eq!(parsed_capabilities, Vec::new());
+
+        let to_parse = "   \r\n   ";
+
+        let parsed_capabilities = parse_capabilities(to_parse);
+
+        assert_eq!(parsed_capabilities, Vec::new())
+    }
+
+    #[test]
+    fn test_server_response() {
+        let response = "+OK testing this functionality";
+
+        let result = parse_server_response(response);
+
+        assert!(result.is_ok());
+
+        let response = "+OK some data";
+
+        let result = parse_server_response(response);
+
+        assert_eq!(result.unwrap(), "some data");
+
+        let response = "-ERR something went wrong!";
+
+        let result = parse_server_response(response);
+
+        assert!(result.is_err());
+
+        let response = "this is not allowed";
+
+        let result = parse_server_response(response);
+
+        assert!(result.is_err());
+
+        let response = "not valid +OK some data";
+
+        let result = parse_server_response(response);
+
+        assert!(result.is_err());
     }
 }

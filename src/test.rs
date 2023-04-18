@@ -101,7 +101,7 @@ async fn stat() {
 
     let stats = client.stat().await.unwrap();
 
-    assert_eq!(stats, (0, 0));
+    assert_eq!(stats.drop_size(), &(0 as u64));
 
     client.quit().await.unwrap();
 }
@@ -119,13 +119,11 @@ async fn list() {
     //     _ => {}
     // };
 
-    let list = client.list(None).await.unwrap();
+    let response = client.list(None).await.unwrap();
 
-    match list {
-        StatsResponse::StatsList(list) => {
-            assert_eq!(list, Vec::new());
-        }
-        _ => {}
+    match response {
+        StatsResponse::Stats(_) => unreachable!(),
+        StatsResponse::StatsList(list) => assert!(list.len() == 0),
     };
 
     client.quit().await.unwrap();

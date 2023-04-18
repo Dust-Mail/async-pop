@@ -5,7 +5,7 @@ pub mod types;
 mod utils;
 
 use async_native_tls::{TlsConnector, TlsStream};
-use parse::{parse_capabilities, Parser};
+use parse::parse_capabilities;
 use socket::Socket;
 
 use tokio::{
@@ -14,7 +14,8 @@ use tokio::{
     time::{timeout, Duration},
 };
 use types::{
-    Capabilities, Capability, Error, ErrorKind, Result, Stats, StatsResponse, UniqueIDResponse,
+    Capabilities, Capability, Error, ErrorKind, Result, Stats, StatsResponse, UniqueID,
+    UniqueIDResponse,
 };
 
 use utils::create_command;
@@ -212,13 +213,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Client<S> {
 
         let response = socket.send_command(command, response_is_multi_line).await?;
 
-        let parser = Parser::new(response);
-
-        if response_is_multi_line {
-            Ok(UniqueIDResponse::UniqueIDList(parser.to_unique_id_list()))
-        } else {
-            Ok(UniqueIDResponse::UniqueID(parser.to_unique_id()))
-        }
+        UniqueID::from_response(response)
     }
 
     pub async fn top(&mut self, msg_number: u32, lines: u32) -> Result<Vec<u8>> {
@@ -382,15 +377,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Client<S> {
 
         let response = socket.send_command(command, response_is_multi_line).await?;
 
-        let parser = Parser::new(response);
-
-        if response_is_multi_line {
-            // println!("{}", response);
-
-            Ok(StatsResponse::StatsList(parser.to_stats_list()))
-        } else {
-            Ok(StatsResponse::Stats(parser.to_stats()))
-        }
+        Stats::from_response(response)
     }
 
     pub async fn stat(&mut self) -> Result<Stats> {
@@ -400,11 +387,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Client<S> {
 
         let response = socket.send_command(command, false).await?;
 
-        let parser = Parser::new(response);
-
-        let stats = parser.to_stats();
-
-        Ok(stats)
+        match Stats::from_response(response)? {
+            StatsResponse::Stats(stats) => Ok(stats),
+            StatsResponse::StatsList(_) => unreachable!(),
+        }
     }
 
     pub async fn apop(&mut self, name: &str, digest: &str) -> Result<()> {

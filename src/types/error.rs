@@ -1,4 +1,4 @@
-use std::{error, fmt};
+use std::{error, fmt, num::ParseIntError};
 
 use async_native_tls::Error as TlsError;
 use tokio::{io::Error as IoError, time::error::Elapsed as TimeoutError};
@@ -8,6 +8,7 @@ pub enum ErrorKind {
     Tls(TlsError),
     Io(IoError),
     Timeout(TimeoutError),
+    ParseInt(ParseIntError),
     Connect,
     NotConnected,
     ShouldNotBeConnected,
@@ -85,6 +86,12 @@ impl From<TlsError> for Error {
 impl From<IoError> for Error {
     fn from(io_error: IoError) -> Self {
         Self::new(ErrorKind::Io(io_error), "Error with connection to server")
+    }
+}
+
+impl From<ParseIntError> for Error {
+    fn from(parse_int_error: ParseIntError) -> Self {
+        Self::new(ErrorKind::ParseInt(parse_int_error), "Failed to parse int")
     }
 }
 
