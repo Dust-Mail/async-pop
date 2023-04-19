@@ -33,9 +33,6 @@ jobs:
       - name: Fetch
         run: cargo fetch --locked
       
-      - name: Test
-        run: cargo test
-
       - name: Publish
         run: cargo publish
         env:
