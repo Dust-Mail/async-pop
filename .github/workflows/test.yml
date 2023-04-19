@@ -2,6 +2,11 @@ name: Test package
 
 on:
   push:
+    paths:
+      - src
+      - .github/workflows/test.yml
+      - Cargo.toml
+      - Cargo.lock
   pull_request:
 
 jobs:
