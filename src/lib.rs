@@ -13,7 +13,7 @@
 //!
 //! ## Example
 //!
-//! ```rust
+//! ```rust,ignore
 //! extern crate async_pop;
 //! extern crate async_native_tls;
 //! extern crate mailparse;
@@ -25,7 +25,7 @@
 //! async fn main() {
 //!     let tls = TlsConnector::new();
 //!
-//!     let mut client = async_pop::connect(("pop.gmail.com", 995), "pop.gmail.com", &tls).await.unwrap();
+//!     let mut client = async_pop::connect(("pop.gmail.com", 995), "pop.gmail.com", &tls, None).await.unwrap();
 //!
 //!     client.login("example@gmail.com", "password").await.unwrap();
 //!

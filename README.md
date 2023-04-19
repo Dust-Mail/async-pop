@@ -26,7 +26,7 @@ use mailparse::parse_mail;
 async fn main() {
     let tls = TlsConnector::new();
 
-    let mut client = async_pop::connect(("pop.gmail.com", 995), "pop.gmail.com", &tls).await.unwrap();
+    let mut client = async_pop::connect(("pop.gmail.com", 995), "pop.gmail.com", &tls, None).await.unwrap();
 
     client.login("example@gmail.com", "password").await.unwrap();
 
