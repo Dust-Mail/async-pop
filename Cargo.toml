@@ -1,6 +1,9 @@
 [package]
 name = "async-pop3"
 version = "0.1.1"
+license = "MIT"
+documentation = "https://docs.dust.email/packages/async-pop3"
+repository = "https://github.com/Dust-Mail/async-pop"
 edition = "2021"
 
 rust-version = "1.65.0"
