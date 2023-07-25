@@ -96,6 +96,7 @@ async fn create_client_from_socket<S: AsyncRead + AsyncWrite + Unpin>(
         greeting: None,
         read_greeting: false,
         socket: Some(socket),
+
         state: ClientState::Authentication,
     };
 
@@ -282,6 +283,15 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Client<S> {
         let response = socket.send_command(command, response_is_multi_line).await?;
 
         UniqueID::from_response(response)
+    }
+
+    /// Whether there has been no communication for long enough that the remote server might close the connection.
+    pub fn is_expiring(&mut self) -> Result<bool> {
+        let socket = self.get_socket_mut()?;
+
+        let is_expiring = socket.is_expiring();
+
+        Ok(is_expiring)
     }
 
     pub async fn top(&mut self, msg_number: u32, lines: u32) -> Result<Vec<u8>> {

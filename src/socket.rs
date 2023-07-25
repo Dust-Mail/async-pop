@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufStream},
-    time::timeout,
+    time::{timeout, Instant},
 };
 
 use crate::{
@@ -13,16 +13,31 @@ use crate::{
 
 pub struct Socket<T: AsyncRead + AsyncWrite + Unpin> {
     timeout: Duration,
+    last_command_send: Option<Instant>,
     stream: BufStream<T>,
 }
 
 impl<T: AsyncRead + AsyncWrite + Unpin> Socket<T> {
     const DEFAULT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
+    const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(60 * 5);
 
     pub fn new(stream: T, timeout: Option<Duration>) -> Socket<T> {
         Self {
             timeout: timeout.unwrap_or(Self::DEFAULT_RESPONSE_TIMEOUT),
+            last_command_send: None,
             stream: BufStream::new(stream),
+        }
+    }
+
+    fn sent_command(&mut self) {
+        self.last_command_send = Some(Instant::now())
+    }
+
+    pub fn is_expiring(&self) -> bool {
+        if let Some(last_send) = self.last_command_send {
+            Instant::now().duration_since(last_send) > Self::KEEP_ALIVE_INTERVAL
+        } else {
+            true
         }
     }
 
@@ -33,6 +48,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Socket<T> {
         multi_line_response: bool,
     ) -> Result<String> {
         self.send_bytes(command.as_ref()).await?;
+
+        self.sent_command();
 
         self.read_response(multi_line_response).await
     }
