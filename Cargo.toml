@@ -1,7 +1,7 @@
 [package]
 name = "async-pop"
 description = "A simple Pop3 compatible client"
-version = "0.1.6"
+version = "0.1.7"
 license = "MIT"
 documentation = "https://docs.dust.email/packages/async-pop3"
 repository = "https://github.com/Dust-Mail/async-pop"
