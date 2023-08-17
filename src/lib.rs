@@ -50,11 +50,21 @@ use async_native_tls::{TlsConnector, TlsStream};
 use parse::parse_capabilities;
 use socket::Socket;
 
+#[cfg(feature = "runtime-async-std")]
+use async_std::{
+    future::timeout,
+    io::{Read, Write},
+    net::{TcpStream, ToSocketAddrs},
+};
+#[cfg(feature = "runtime-async-std")]
+use std::time::Duration;
+#[cfg(feature = "runtime-tokio")]
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
+    io::{AsyncRead as Read, AsyncWrite as Write},
     net::{TcpStream, ToSocketAddrs},
     time::{timeout, Duration},
 };
+
 use types::{
     Capabilities, Capability, Error, ErrorKind, Result, Stats, StatsResponse, UniqueID,
     UniqueIDResponse,
@@ -70,7 +80,7 @@ pub enum ClientState {
     None,
 }
 
-pub struct Client<S: AsyncWrite + AsyncRead + Unpin> {
+pub struct Client<S: Write + Read + Unpin> {
     socket: Option<Socket<S>>,
     capabilities: Capabilities,
     marked_as_del: Vec<u32>,
@@ -87,7 +97,7 @@ fn get_connection_timeout(timeout: Option<Duration>) -> Duration {
 }
 
 /// Creates a client from a given socket connection.
-async fn create_client_from_socket<S: AsyncRead + AsyncWrite + Unpin>(
+async fn create_client_from_socket<S: Read + Write + Unpin>(
     socket: Socket<S>,
 ) -> Result<Client<S>> {
     let mut client = Client {
@@ -122,7 +132,7 @@ async fn create_client_from_socket<S: AsyncRead + AsyncWrite + Unpin>(
 ///     client.quit().unwrap();
 /// }
 /// ```
-pub async fn new<S: AsyncRead + AsyncWrite + Unpin>(
+pub async fn new<S: Read + Write + Unpin>(
     stream: S,
     timeout: Option<Duration>,
 ) -> Result<Client<S>> {
@@ -165,7 +175,7 @@ pub async fn connect_plain<A: ToSocketAddrs>(
     create_client_from_socket(socket).await
 }
 
-impl<S: AsyncRead + AsyncWrite + Unpin> Client<S> {
+impl<S: Read + Write + Unpin> Client<S> {
     /// Check if the client is in the correct state and return a mutable reference to the tcp connection.
     fn get_socket_mut(&mut self) -> Result<&mut Socket<S>> {
         match self.socket.as_mut() {

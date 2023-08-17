@@ -3,6 +3,9 @@ use crate::{
     types::{Capabilities, Capability, Error, ErrorKind, Result},
 };
 
+#[cfg(feature = "runtime-async-std")]
+use std::time::Duration;
+#[cfg(feature = "runtime-tokio")]
 use tokio::time::Duration;
 
 pub fn parse_utf8_bytes(bytes: Vec<u8>) -> Result<String> {

@@ -1,7 +1,15 @@
 use std::time::Duration;
 
+#[cfg(feature = "runtime-async-std")]
+use async_std::{
+    future::timeout,
+    io::{Read, Write, WriteExt},
+};
+#[cfg(feature = "runtime-async-std")]
+use std::time::Instant;
+#[cfg(feature = "runtime-tokio")]
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufStream},
+    io::{AsyncBufReadExt, AsyncRead as Read, AsyncWrite as Write, AsyncWriteExt, BufStream},
     time::{timeout, Instant},
 };
 
@@ -11,13 +19,13 @@ use crate::{
     types::{Error, ErrorKind, Result},
 };
 
-pub struct Socket<T: AsyncRead + AsyncWrite + Unpin> {
+pub struct Socket<T: Read + Write + Unpin> {
     timeout: Duration,
     last_command_send: Option<Instant>,
     stream: BufStream<T>,
 }
 
-impl<T: AsyncRead + AsyncWrite + Unpin> Socket<T> {
+impl<T: Read + Write + Unpin> Socket<T> {
     const DEFAULT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
     const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(60 * 5);
 

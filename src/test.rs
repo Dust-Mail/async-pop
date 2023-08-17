@@ -1,7 +1,10 @@
 use std::env;
 
 // use async_native_tls::{TlsConnector, TlsStream};
+#[cfg(feature = "runtime-async-std")]
+use async_std::net::TcpStream;
 use dotenv::dotenv;
+#[cfg(feature = "runtime-tokio")]
 use tokio::net::TcpStream;
 
 use crate::{types::StatsResponse, ClientState};
@@ -61,7 +64,8 @@ async fn create_logged_in_client() -> Client<TcpStream> {
 //     client
 // }
 
-#[tokio::test]
+#[cfg_attr(feature = "runtime-tokio", tokio::test)]
+#[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn connect() {
     let client_info = create_client_info();
 
@@ -77,7 +81,8 @@ async fn connect() {
     client.quit().await.unwrap()
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "runtime-tokio", tokio::test)]
+#[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn login() {
     let mut client = create_logged_in_client().await;
 
@@ -86,7 +91,8 @@ async fn login() {
     client.quit().await.unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "runtime-tokio", tokio::test)]
+#[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn noop() {
     let mut client = create_logged_in_client().await;
 
@@ -95,7 +101,8 @@ async fn noop() {
     client.quit().await.unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "runtime-tokio", tokio::test)]
+#[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn stat() {
     let mut client = create_logged_in_client().await;
 
@@ -106,7 +113,8 @@ async fn stat() {
     client.quit().await.unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(feature = "runtime-tokio", tokio::test)]
+#[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn list() {
     let mut client = create_logged_in_client().await;
 
