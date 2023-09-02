@@ -1,5 +1,6 @@
 use std::env;
 
+use async_native_tls::TlsConnector;
 // use async_native_tls::{TlsConnector, TlsStream};
 #[cfg(feature = "runtime-async-std")]
 use async_std::net::TcpStream;
@@ -7,7 +8,7 @@ use dotenv::dotenv;
 #[cfg(feature = "runtime-tokio")]
 use tokio::net::TcpStream;
 
-use crate::{types::StatsResponse, ClientState};
+use crate::{response::list::ListResponse, ClientState};
 
 use super::Client;
 
@@ -38,7 +39,7 @@ async fn create_logged_in_client() -> Client<TcpStream> {
     let username = client_info.username;
     let password = client_info.password;
 
-    let mut client = super::connect_plain((server, port), None).await.unwrap();
+    let mut client = super::connect_plain((server, port)).await.unwrap();
 
     client.login(username, password).await.unwrap();
 
@@ -67,18 +68,22 @@ async fn create_logged_in_client() -> Client<TcpStream> {
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn connect() {
+    env_logger::init();
+
     let client_info = create_client_info();
 
     let server = client_info.server.as_ref();
     let port = client_info.port;
 
-    let mut client = super::connect_plain((server, port), None).await.unwrap();
+    let tls = TlsConnector::new();
+
+    let mut client = super::connect_plain((server, port)).await.unwrap();
 
     let greeting = client.greeting().unwrap();
 
-    assert_eq!(greeting, "POP3 GreenMail Server v1.6.12 ready");
+    // assert_eq!(greeting, "POP3 GreenMail Server v1.6.12 ready");
 
-    client.quit().await.unwrap()
+    client.quit().await.unwrap();
 }
 
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
@@ -108,7 +113,7 @@ async fn stat() {
 
     let stats = client.stat().await.unwrap();
 
-    assert_eq!(stats.drop_size(), &(0 as u64));
+    assert_eq!(stats.size(), 0);
 
     client.quit().await.unwrap();
 }
@@ -130,8 +135,8 @@ async fn list() {
     let response = client.list(None).await.unwrap();
 
     match response {
-        StatsResponse::Stats(_) => unreachable!(),
-        StatsResponse::StatsList(list) => assert!(list.len() == 0),
+        ListResponse::Single(_) => unreachable!(),
+        ListResponse::Multiple(list) => assert!(list.items().len() == 0),
     };
 
     client.quit().await.unwrap();

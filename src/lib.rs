@@ -40,37 +40,39 @@
 //! }
 //! ```
 
+mod command;
 mod constants;
-mod parse;
-mod socket;
-pub mod types;
-mod utils;
+pub mod error;
+mod macros;
+mod request;
+pub mod response;
+mod runtime;
+mod stream;
+
+use std::collections::HashSet;
 
 use async_native_tls::{TlsConnector, TlsStream};
-use parse::parse_capabilities;
-use socket::Socket;
-
-#[cfg(feature = "runtime-async-std")]
-use async_std::{
-    future::timeout,
-    io::{Read, Write},
-    net::{TcpStream, ToSocketAddrs},
+use bytes::Bytes;
+use command::Command::*;
+use error::{Error, ErrorKind, Result};
+use request::Request;
+use response::{
+    capability::{Capabilities, Capability},
+    list::ListResponse,
+    stat::StatResponse,
+    uidl::UidlResponse,
+    ResponseType,
 };
-#[cfg(feature = "runtime-async-std")]
-use std::time::Duration;
-#[cfg(feature = "runtime-tokio")]
-use tokio::{
-    io::{AsyncRead as Read, AsyncWrite as Write},
-    net::{TcpStream, ToSocketAddrs},
-    time::{timeout, Duration},
-};
+use stream::PopStream;
 
-use types::{
-    Capabilities, Capability, Error, ErrorKind, Result, Stats, StatsResponse, UniqueID,
-    UniqueIDResponse,
+use crate::{
+    error::err,
+    runtime::{
+        io::{Read, Write},
+        net::{TcpStream, ToSocketAddrs},
+        Instant,
+    },
 };
-
-use utils::create_command;
 
 #[derive(Eq, PartialEq, Debug)]
 pub enum ClientState {
@@ -81,32 +83,24 @@ pub enum ClientState {
 }
 
 pub struct Client<S: Write + Read + Unpin> {
-    socket: Option<Socket<S>>,
+    inner: Option<PopStream<S>>,
     capabilities: Capabilities,
-    marked_as_del: Vec<u32>,
+    marked_as_del: Vec<usize>,
     greeting: Option<String>,
     read_greeting: bool,
     state: ClientState,
 }
 
-fn get_connection_timeout(timeout: Option<Duration>) -> Duration {
-    match timeout {
-        Some(timeout) => timeout,
-        None => Duration::from_secs(60),
-    }
-}
-
 /// Creates a client from a given socket connection.
 async fn create_client_from_socket<S: Read + Write + Unpin>(
-    socket: Socket<S>,
+    socket: PopStream<S>,
 ) -> Result<Client<S>> {
     let mut client = Client {
         marked_as_del: Vec::new(),
         capabilities: Vec::new(),
         greeting: None,
         read_greeting: false,
-        socket: Some(socket),
-
+        inner: Some(socket),
         state: ClientState::Authentication,
     };
 
@@ -132,11 +126,8 @@ async fn create_client_from_socket<S: Read + Write + Unpin>(
 ///     client.quit().unwrap();
 /// }
 /// ```
-pub async fn new<S: Read + Write + Unpin>(
-    stream: S,
-    timeout: Option<Duration>,
-) -> Result<Client<S>> {
-    let socket = Socket::new(stream, timeout);
+pub async fn new<S: Read + Write + Unpin>(stream: S) -> Result<Client<S>> {
+    let socket = PopStream::new(stream);
 
     create_client_from_socket(socket).await
 }
@@ -146,15 +137,12 @@ pub async fn connect<A: ToSocketAddrs, D: AsRef<str>>(
     addr: A,
     domain: D,
     tls_connector: &TlsConnector,
-    connection_timeout: Option<Duration>,
 ) -> Result<Client<TlsStream<TcpStream>>> {
-    let connection_timeout = get_connection_timeout(connection_timeout);
-
-    let tcp_stream = timeout(connection_timeout, TcpStream::connect(addr)).await??;
+    let tcp_stream = TcpStream::connect(addr).await?;
 
     let tls_stream = tls_connector.connect(domain.as_ref(), tcp_stream).await?;
 
-    let socket = Socket::new(tls_stream, None);
+    let socket = PopStream::new(tls_stream);
 
     create_client_from_socket(socket).await
 }
@@ -162,23 +150,18 @@ pub async fn connect<A: ToSocketAddrs, D: AsRef<str>>(
 /// Creates a new pop3 client using a plain connection.
 ///
 /// DO NOT USE in a production environment. Your password will be sent over a plain tcp stream which hackers could intercept.
-pub async fn connect_plain<A: ToSocketAddrs>(
-    addr: A,
-    connection_timeout: Option<Duration>,
-) -> Result<Client<TcpStream>> {
-    let connection_timeout = get_connection_timeout(connection_timeout);
+pub async fn connect_plain<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream>> {
+    let tcp_stream = TcpStream::connect(addr).await?;
 
-    let tcp_stream = timeout(connection_timeout, TcpStream::connect(addr)).await??;
-
-    let socket = Socket::new(tcp_stream, None);
+    let socket = PopStream::new(tcp_stream);
 
     create_client_from_socket(socket).await
 }
 
 impl<S: Read + Write + Unpin> Client<S> {
     /// Check if the client is in the correct state and return a mutable reference to the tcp connection.
-    fn get_socket_mut(&mut self) -> Result<&mut Socket<S>> {
-        match self.socket.as_mut() {
+    fn inner_mut(&mut self) -> Result<&mut PopStream<S>> {
+        match self.inner.as_mut() {
             Some(socket) => {
                 if self.state == ClientState::Transaction
                     || self.state == ClientState::Authentication
@@ -198,12 +181,12 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
-    pub fn inner(&self) -> &Option<Socket<S>> {
-        &self.socket
+    pub fn inner(&self) -> &Option<PopStream<S>> {
+        &self.inner
     }
 
-    pub fn into_inner(self) -> Option<Socket<S>> {
-        self.socket
+    pub fn into_inner(self) -> Option<PopStream<S>> {
+        self.inner
     }
 
     /// Check if the client is in the correct state.
@@ -243,11 +226,9 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// ```
     /// https://www.rfc-editor.org/rfc/rfc1939#page-9
     pub async fn noop(&mut self) -> Result<()> {
-        let socket = self.get_socket_mut()?;
+        let socket = self.inner_mut()?;
 
-        let command = "NOOP";
-
-        socket.send_command(command, false).await?;
+        socket.send_request(Noop).await?;
 
         Ok(())
     }
@@ -270,7 +251,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// - -ERR no such message
     ///
     /// https://www.rfc-editor.org/rfc/rfc1939#page-12
-    pub async fn uidl(&mut self, msg_number: Option<u32>) -> Result<UniqueIDResponse> {
+    pub async fn uidl(&mut self, msg_number: Option<usize>) -> Result<UidlResponse> {
         self.check_capability(vec![Capability::Uidl])?;
 
         match msg_number.as_ref() {
@@ -278,48 +259,55 @@ impl<S: Read + Write + Unpin> Client<S> {
             None => {}
         };
 
-        let response_is_multi_line = msg_number.is_none();
+        let socket = self.inner_mut()?;
 
-        let socket = self.get_socket_mut()?;
+        let mut request: Request = Uidl.into();
 
-        let arguments = if msg_number.is_some() {
-            vec![msg_number.unwrap().to_string()]
-        } else {
-            Vec::new()
-        };
+        if let Some(number) = msg_number {
+            request.add_arg(number)
+        }
 
-        let command = create_command("UIDL", &arguments)?;
+        let response = socket.send_request(request).await?;
 
-        let response = socket.send_command(command, response_is_multi_line).await?;
-
-        UniqueID::from_response(response)
+        match response.into() {
+            ResponseType::Uidl(resp) => Ok(resp),
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected uidl response"
+            ),
+        }
     }
 
-    /// Whether there has been no communication for long enough that the remote server might close the connection.
-    pub fn is_expiring(&mut self) -> Result<bool> {
-        let socket = self.get_socket_mut()?;
+    /// When the last communication with the server happened.
+    pub fn last_activity(&mut self) -> Result<Option<Instant>> {
+        let socket = self.inner_mut()?;
 
-        let is_expiring = socket.is_expiring();
+        let last_activity = socket.last_activity();
 
-        Ok(is_expiring)
+        Ok(last_activity)
     }
 
-    pub async fn top(&mut self, msg_number: u32, lines: u32) -> Result<Vec<u8>> {
+    pub async fn top(&mut self, msg_number: usize, lines: usize) -> Result<Bytes> {
         self.check_deleted(&msg_number)?;
 
         self.check_capability(vec![Capability::Top])?;
 
-        let socket = self.get_socket_mut()?;
+        let socket = self.inner_mut()?;
 
-        let command = format!("TOP {} {}", msg_number, lines);
+        let mut request: Request = Top.into();
 
-        socket.send_command(command, false).await?;
+        request.add_arg(msg_number);
+        request.add_arg(lines);
 
-        let mut response: Vec<u8> = Vec::new();
+        let response = socket.send_request(request).await?;
 
-        socket.read_multi_line(&mut response).await?;
-
-        Ok(response)
+        match response.into() {
+            ResponseType::Top(resp) => Ok(resp),
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected top response"
+            ),
+        }
     }
 
     /// Check whether a given message is marked as deleted by the server.
@@ -331,7 +319,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// let is_deleted = client.is_deleted(msg_number);
     /// assert_eq!(is_deleted, false);
     /// ```
-    pub fn is_deleted(&mut self, msg_number: &u32) -> bool {
+    pub fn is_deleted(&mut self, msg_number: &usize) -> bool {
         self.marked_as_del.sort();
 
         match self.marked_as_del.binary_search(msg_number) {
@@ -340,10 +328,10 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
-    fn check_deleted(&mut self, msg_number: &u32) -> Result<()> {
+    fn check_deleted(&mut self, msg_number: &usize) -> Result<()> {
         if self.is_deleted(msg_number) {
-            Err(types::Error::new(
-                types::ErrorKind::MessageIsDeleted,
+            Err(Error::new(
+                ErrorKind::MessageIsDeleted,
                 "This message has been marked as deleted and cannot be refenced anymore",
             ))
         } else {
@@ -367,16 +355,24 @@ impl<S: Read + Write + Unpin> Client<S> {
     ///
     /// println!("{}", is_deleted);
     /// ```
-    pub async fn dele(&mut self, msg_number: u32) -> Result<()> {
+    pub async fn dele(&mut self, msg_number: usize) -> Result<String> {
         self.check_deleted(&msg_number)?;
 
-        let socket = self.get_socket_mut()?;
+        let socket = self.inner_mut()?;
 
-        let command = format!("DELE {}", msg_number);
+        let mut request: Request = Dele.into();
 
-        socket.send_command(command.as_bytes(), false).await?;
+        request.add_arg(msg_number);
 
-        Ok(())
+        let response = socket.send_request(request).await?;
+
+        match response.into() {
+            ResponseType::Message(resp) => Ok(resp),
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected dele response"
+            ),
+        }
     }
 
     /// ## RSET
@@ -392,14 +388,18 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// client.rset().unwrap();
     /// ```
     /// https://www.rfc-editor.org/rfc/rfc1939#page-9
-    pub async fn rset(&mut self) -> Result<()> {
-        let socket = self.get_socket_mut()?;
+    pub async fn rset(&mut self) -> Result<String> {
+        let socket = self.inner_mut()?;
 
-        let command = b"RSET";
+        let response = socket.send_request(Rset).await?;
 
-        socket.send_command(command, false).await?;
-
-        Ok(())
+        match response.into() {
+            ResponseType::Message(resp) => Ok(resp),
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected rset response"
+            ),
+        }
     }
 
     /// ## RETR
@@ -425,101 +425,124 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// println!("{}", subject);
     /// ```
     /// https://www.rfc-editor.org/rfc/rfc1939#page-8
-    pub async fn retr(&mut self, msg_number: u32) -> Result<Vec<u8>> {
+    pub async fn retr(&mut self, msg_number: usize) -> Result<Bytes> {
         self.check_deleted(&msg_number)?;
 
-        let socket = self.get_socket_mut()?;
+        let mut request: Request = Retr.into();
 
-        let arguments = vec![msg_number.to_string()];
+        request.add_arg(msg_number);
 
-        let command = create_command("RETR", &arguments)?;
+        let socket = self.inner_mut()?;
 
-        socket.send_bytes(command.as_bytes()).await?;
+        let response = socket.send_request(request).await?;
 
-        let mut response: Vec<u8> = Vec::new();
-
-        socket.read_multi_line(&mut response).await?;
-
-        Ok(response)
-    }
-
-    pub async fn list(&mut self, msg_number: Option<u32>) -> Result<StatsResponse> {
-        match msg_number.as_ref() {
-            Some(msg_number) => {
-                self.check_deleted(msg_number)?;
-            }
-            None => {}
-        };
-
-        let socket = self.get_socket_mut()?;
-
-        let response_is_multi_line = msg_number.is_none();
-
-        let arguments = if !response_is_multi_line {
-            vec![msg_number.unwrap().to_string()]
-        } else {
-            Vec::new()
-        };
-
-        let command = create_command("LIST", &arguments)?;
-
-        let response = socket.send_command(command, response_is_multi_line).await?;
-
-        Stats::from_response(response)
-    }
-
-    pub async fn stat(&mut self) -> Result<Stats> {
-        let socket = self.get_socket_mut()?;
-
-        let command = b"STAT";
-
-        let response = socket.send_command(command, false).await?;
-
-        match Stats::from_response(response)? {
-            StatsResponse::Stats(stats) => Ok(stats),
-            StatsResponse::StatsList(_) => unreachable!(),
+        match response.into() {
+            ResponseType::Retr(resp) => Ok(resp),
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected retr response"
+            ),
         }
     }
 
-    pub async fn apop(&mut self, name: &str, digest: &str) -> Result<()> {
+    pub async fn list(&mut self, msg_number: Option<usize>) -> Result<ListResponse> {
+        if let Some(msg_number) = msg_number.as_ref() {
+            self.check_deleted(msg_number)?;
+        }
+
+        let mut request: Request = List.into();
+
+        if let Some(msg_number) = msg_number {
+            request.add_arg(msg_number)
+        }
+
+        let socket = self.inner_mut()?;
+
+        let response = socket.send_request(request).await?;
+
+        match response.into() {
+            ResponseType::List(resp) => Ok(resp),
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected list response"
+            ),
+        }
+    }
+
+    pub async fn stat(&mut self) -> Result<StatResponse> {
+        let socket = self.inner_mut()?;
+
+        let response = socket.send_request(Stat).await?;
+
+        match response.into() {
+            ResponseType::Stat(resp) => Ok(resp),
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected stat response"
+            ),
+        }
+    }
+
+    pub async fn apop<N: AsRef<str>, D: AsRef<str>>(
+        &mut self,
+        name: N,
+        digest: D,
+    ) -> Result<String> {
         self.check_client_state(ClientState::Authentication)?;
 
         self.has_read_greeting()?;
 
-        let socket = self.get_socket_mut()?;
+        let socket = self.inner_mut()?;
 
-        let command = format!("APOP {} {}", name, digest);
+        let mut request: Request = Apop.into();
 
-        socket.send_command(command, false).await?;
+        request.add_arg(name.as_ref());
+        request.add_arg(digest.as_ref());
+
+        let response = socket.send_request(request).await?;
 
         self.state = ClientState::Transaction;
 
-        Ok(())
+        match response.into() {
+            ResponseType::Message(resp) => Ok(resp),
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected apop response"
+            ),
+        }
     }
 
-    pub async fn auth<U: AsRef<str>>(&mut self, token: U) -> Result<()> {
+    pub async fn auth<U: AsRef<str>>(&mut self, token: U) -> Result<String> {
         self.check_client_state(ClientState::Authentication)?;
 
         self.check_capability(vec![Capability::Sasl(vec![String::from("XOAUTH2")])])?;
 
         self.has_read_greeting()?;
 
-        let socket = self.get_socket_mut()?;
+        let socket = self.inner_mut()?;
 
-        let command = format!("AUTH {}", token.as_ref());
+        let mut request: Request = Auth.into();
 
-        socket.send_command(command, false).await?;
+        request.add_arg(token.as_ref());
+
+        let response = socket.send_request(request).await?;
 
         self.state = ClientState::Transaction;
 
-        Ok(())
+        match response.into() {
+            ResponseType::Message(resp) => Ok(resp),
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected auth response"
+            ),
+        }
     }
 
     pub async fn login<U: AsRef<str>, P: AsRef<str>>(
         &mut self,
         user: U,
         password: P,
-    ) -> Result<()> {
+    ) -> Result<(String, String)> {
         self.check_client_state(ClientState::Authentication)?;
 
         self.check_capability(vec![
@@ -529,21 +552,41 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         self.has_read_greeting()?;
 
-        let socket = self.get_socket_mut()?;
+        let socket = self.inner_mut()?;
 
-        let command = format!("USER {}", user.as_ref());
+        let mut request: Request = User.into();
 
-        socket.send_command(command, false).await?;
+        request.add_arg(user.as_ref());
 
-        let command = format!("PASS {}", password.as_ref());
+        let user_response = socket.send_request(request).await?;
 
-        socket.send_command(command, false).await?;
+        let mut request: Request = Pass.into();
+
+        request.add_arg(password.as_ref());
+
+        let pass_response = socket.send_request(request).await?;
 
         self.capabilities = self.capa().await?;
 
         self.state = ClientState::Transaction;
 
-        Ok(())
+        let user_response_str = match user_response.into() {
+            ResponseType::Message(resp) => resp,
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected user response"
+            ),
+        };
+
+        let pass_response_str = match pass_response.into() {
+            ResponseType::Message(resp) => resp,
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected pass response"
+            ),
+        };
+
+        Ok((user_response_str, pass_response_str))
     }
 
     /// ## QUIT
@@ -557,45 +600,44 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// - +OK
     ///
     /// https://www.rfc-editor.org/rfc/rfc1939#page-5
-    pub async fn quit(&mut self) -> Result<()> {
-        let socket = self.get_socket_mut()?;
+    pub async fn quit(&mut self) -> Result<String> {
+        let socket = self.inner_mut()?;
 
-        let command = "QUIT";
-
-        socket.send_command(command, false).await?;
+        let response = socket.send_request(Quit).await?;
 
         self.state = ClientState::Update;
-        self.socket = None;
+        self.inner = None;
         self.state = ClientState::None;
 
         self.marked_as_del.clear();
         self.capabilities.clear();
 
-        Ok(())
-    }
-
-    /// Check whether the server supports one of the given capabilities.
-    pub fn has_capability(&mut self, capabilities: Vec<Capability>) -> bool {
-        self.capabilities.sort();
-
-        match capabilities.iter().find(|capability| {
-            match self.capabilities.binary_search(&capability) {
-                Ok(_) => true,
-                Err(_) => false,
-            }
-        }) {
-            Some(_) => true,
-            None => false,
+        match response.into() {
+            ResponseType::Message(resp) => Ok(resp),
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected quit response"
+            ),
         }
     }
 
+    /// Check whether the server supports one of the given capabilities.
+    pub fn has_capability<C: AsRef<[Capability]>>(&mut self, capabilities: C) -> bool {
+        let to_find: HashSet<_> = capabilities.as_ref().iter().collect();
+        let server_has: HashSet<_> = self.capabilities.iter().collect();
+
+        let intersect: Vec<_> = server_has.intersection(&to_find).collect();
+
+        intersect.len() == capabilities.as_ref().len()
+    }
+
     /// Make sure the given capabilities are present
-    fn check_capability(&mut self, capability: Vec<Capability>) -> Result<()> {
+    fn check_capability<C: AsRef<[Capability]>>(&mut self, capability: C) -> Result<()> {
         if !self.has_capability(capability) {
-            Err(types::Error::new(
-                types::ErrorKind::FeatureUnsupported,
+            err!(
+                ErrorKind::FeatureUnsupported,
                 "The remote pop server does not support this command/function",
-            ))
+            )
         } else {
             Ok(())
         }
@@ -608,13 +650,17 @@ impl<S: Read + Write + Unpin> Client<S> {
 
     /// Fetches a list of capabilities for the currently connected server and returns it.
     pub async fn capa(&mut self) -> Result<Capabilities> {
-        let socket = self.get_socket_mut()?;
+        let stream = self.inner_mut()?;
 
-        let command = b"CAPA";
+        let response = stream.send_request(Capa).await?;
 
-        let response = socket.send_command(command, true).await?;
-
-        Ok(parse_capabilities(&response))
+        match response.into() {
+            ResponseType::Capability(resp) => Ok(resp),
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected capa response"
+            ),
+        }
     }
 
     fn has_read_greeting(&self) -> Result<()> {
@@ -631,12 +677,22 @@ impl<S: Read + Write + Unpin> Client<S> {
     async fn read_greeting(&mut self) -> Result<String> {
         assert!(!self.read_greeting, "Cannot read greeting twice");
 
-        let socket = self.get_socket_mut()?;
+        let socket = self.inner_mut()?;
 
-        let response = socket.read_response(false).await?;
+        let response = socket.read_response(Greet).await?;
 
-        self.read_greeting = true;
-        Ok(response)
+        match response.into() {
+            ResponseType::Message(resp) => {
+                self.greeting = Some(resp.clone());
+                self.read_greeting = true;
+
+                Ok(resp)
+            }
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected greeting"
+            ),
+        }
     }
 
     /// The greeting that the POP server sent when the connection opened.

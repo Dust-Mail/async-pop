@@ -1,6 +1,18 @@
 use std::time::Duration;
 
-#[derive(Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Clone)]
+pub enum Expiration {
+    Never,
+    Time(Duration),
+}
+
+impl Default for Expiration {
+    fn default() -> Self {
+        Self::Never
+    }
+}
+
+#[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Clone)]
 pub enum Capability {
     /// Whether the TOP command is supported.
     Top,
@@ -15,7 +27,7 @@ pub enum Capability {
     /// Whether the server supports pipelining. See https://www.rfc-editor.org/rfc/rfc2197
     Pipelining,
     /// The amount of time the server will store messsages for.
-    Expire(Option<Duration>),
+    Expire(Expiration),
     /// Whether the UIDL command is supported.
     Uidl,
     /// The type of authentication method the server prefers/uses.

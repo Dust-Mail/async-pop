@@ -1,14 +1,32 @@
-use std::{error, fmt, num::ParseIntError};
+use std::{
+    error,
+    fmt::{self},
+    num::ParseIntError,
+    result,
+    str::Utf8Error,
+};
 
+use crate::runtime::io::Error as IoError;
 use async_native_tls::Error as TlsError;
-use tokio::{io::Error as IoError, time::error::Elapsed as TimeoutError};
+
+macro_rules! err {
+    ($kind:expr, $($arg:tt)*) => {{
+		use crate::error::Error;
+
+        let kind = $kind;
+        let message = format!($($arg)*);
+        return Err(Error::new( kind, message ));
+    }};
+}
 
 #[derive(Debug)]
 pub enum ErrorKind {
     Tls(TlsError),
     Io(IoError),
-    Timeout(TimeoutError),
+
     ParseInt(ParseIntError),
+    ParseString(Utf8Error),
+    Nom,
     Connect,
     NotConnected,
     ShouldNotBeConnected,
@@ -19,9 +37,13 @@ pub enum ErrorKind {
     ParseServerAddress,
     SecureConnection,
     SendCommand,
+    ParseResponse,
     InvalidResponse,
     NoResponse,
     ServerError,
+    ParseCommand,
+    UnexpectedResponse,
+    ConnectionClosed,
 }
 
 #[derive(Debug)]
@@ -95,11 +117,12 @@ impl From<ParseIntError> for Error {
     }
 }
 
-impl From<TimeoutError> for Error {
-    fn from(timeout_error: TimeoutError) -> Self {
-        Self::new(
-            ErrorKind::Timeout(timeout_error),
-            "Timeout when connecting to server",
-        )
+impl From<Utf8Error> for Error {
+    fn from(error: Utf8Error) -> Self {
+        Self::new(ErrorKind::ParseString(error), "Failed to parse string")
     }
 }
+
+pub(crate) use err;
+
+pub type Result<T> = result::Result<T, Error>;
