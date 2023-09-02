@@ -1,10 +1,11 @@
 use std::env;
 
-use async_native_tls::TlsConnector;
+use async_native_tls::{TlsConnector, TlsStream};
 // use async_native_tls::{TlsConnector, TlsStream};
 #[cfg(feature = "runtime-async-std")]
 use async_std::net::TcpStream;
 use dotenv::dotenv;
+use log::info;
 #[cfg(feature = "runtime-tokio")]
 use tokio::net::TcpStream;
 
@@ -31,7 +32,7 @@ fn create_client_info() -> ClientInfo {
     }
 }
 
-async fn create_logged_in_client() -> Client<TcpStream> {
+async fn create_logged_in_client() -> Client<TlsStream<TcpStream>> {
     let client_info = create_client_info();
     let server = client_info.server.as_ref();
     let port = client_info.port;
@@ -39,7 +40,9 @@ async fn create_logged_in_client() -> Client<TcpStream> {
     let username = client_info.username;
     let password = client_info.password;
 
-    let mut client = super::connect_plain((server, port)).await.unwrap();
+    let tls = TlsConnector::new();
+
+    let mut client = super::connect((server, port), server, &tls).await.unwrap();
 
     client.login(username, password).await.unwrap();
 
@@ -81,6 +84,8 @@ async fn connect() {
 
     let greeting = client.greeting().unwrap();
 
+    info!("{}", greeting);
+
     // assert_eq!(greeting, "POP3 GreenMail Server v1.6.12 ready");
 
     client.quit().await.unwrap();
@@ -89,6 +94,8 @@ async fn connect() {
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn login() {
+    env_logger::init();
+
     let mut client = create_logged_in_client().await;
 
     assert_eq!(client.get_state(), &ClientState::Transaction);
@@ -99,6 +106,8 @@ async fn login() {
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn noop() {
+    env_logger::init();
+
     let mut client = create_logged_in_client().await;
 
     assert_eq!(client.noop().await.unwrap(), ());
@@ -109,6 +118,8 @@ async fn noop() {
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn stat() {
+    env_logger::init();
+
     let mut client = create_logged_in_client().await;
 
     let stats = client.stat().await.unwrap();
@@ -121,16 +132,20 @@ async fn stat() {
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn list() {
+    env_logger::init();
+
     let mut client = create_logged_in_client().await;
 
-    // let list = client.list(Some(4)).unwrap();
+    let list = client.list(Some(4)).await.unwrap();
 
-    // match list {
-    //     Right(list_item) => {
-    //         println!("{}", list_item.0);
-    //     }
-    //     _ => {}
-    // };
+    match list {
+        ListResponse::Single(list_item) => {
+            info!("{}", list_item.size());
+        }
+        _ => {
+            unreachable!()
+        }
+    };
 
     let response = client.list(None).await.unwrap();
 
@@ -142,27 +157,33 @@ async fn list() {
     client.quit().await.unwrap();
 }
 
-// #[test]
-// fn retr() {
-//     let mut client = create_logged_in_client();
+#[cfg_attr(feature = "runtime-tokio", tokio::test)]
+#[cfg_attr(feature = "runtime-async-std", async_std::test)]
+async fn retr() {
+    env_logger::init();
 
-//     let bytes = client.retr(1).unwrap();
+    let mut client = create_logged_in_client().await;
 
-//     println!("{}", String::from_utf8(bytes).unwrap());
+    let bytes = client.retr(1).await.unwrap();
 
-//     client.quit().unwrap();
-// }
+    // println!("{}", String::from_utf8(bytes).unwrap());
 
-// #[test]
-// fn top() {
-//     let mut client = create_logged_in_client();
+    client.quit().await.unwrap();
+}
 
-//     let bytes = client.top(1, 0).unwrap();
+#[cfg_attr(feature = "runtime-tokio", tokio::test)]
+#[cfg_attr(feature = "runtime-async-std", async_std::test)]
+async fn top() {
+    env_logger::init();
 
-//     println!("{}", String::from_utf8(bytes).unwrap());
+    let mut client = create_logged_in_client().await;
 
-//     client.quit().unwrap();
-// }
+    let bytes = client.top(3, 0).await.unwrap();
+
+    // println!("{}", String::from_utf8(bytes).unwrap());
+
+    client.quit().await.unwrap();
+}
 
 // #[test]
 // fn uidl() {

@@ -54,7 +54,8 @@ impl Command {
             "auth" => Auth,
             "user" => User,
             "quit" => Quit,
-            "capa" => Capa
+            "capa" => Capa,
+            "pass" => Pass
         )
     }
 }

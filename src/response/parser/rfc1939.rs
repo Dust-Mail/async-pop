@@ -1,7 +1,7 @@
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while_m_n},
-    character::complete::{digit1, space1},
+    character::complete::{digit1, space0, space1},
     combinator::{map, map_res, value},
     sequence::terminated,
     IResult,
@@ -19,7 +19,7 @@ pub(crate) fn status<'a>(input: &'a str) -> IResult<&'a str, Status> {
         map(alt((value(true, tag(OK)), value(false, tag(ERR)))), |val| {
             Status::new(val)
         }),
-        space1,
+        space0,
     )(input)
 }
 

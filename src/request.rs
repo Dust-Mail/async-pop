@@ -2,6 +2,7 @@ use std::{fmt::Display, str::FromStr};
 
 use crate::{command::Command, error::Error};
 
+#[derive(Debug)]
 pub struct Request {
     command: Command,
     args: Vec<String>,

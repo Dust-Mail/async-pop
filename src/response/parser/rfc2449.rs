@@ -3,7 +3,7 @@ use std::time::Duration;
 use nom::{
     branch::alt,
     bytes::complete::tag_no_case,
-    character::complete::{digit1, space0, space1},
+    character::complete::{digit1, not_line_ending, space0, space1},
     combinator::{map, map_res, opt, value},
     multi::{many_till, separated_list0},
     sequence::{preceded, terminated},
@@ -23,6 +23,9 @@ fn sasl_mechanism(input: &str) -> IResult<&str, &str> {
         tag_no_case("GSSAPI"),
         tag_no_case("SKEY"),
         tag_no_case("CRAM-MD5"),
+        tag_no_case("PLAIN"),
+        tag_no_case("XOAUTH2"),
+        tag_no_case("OAUTHBEARER"),
     ))(input)
 }
 
@@ -91,6 +94,13 @@ fn capability(input: &str) -> IResult<&str, Capability> {
         eol,
     );
     let uidl = terminated(value(Capability::Uidl, tag_no_case("UIDL")), eol);
+    let stls = terminated(value(Capability::Stls, tag_no_case("STLS")), eol);
+    let other = terminated(
+        map(not_line_ending, |other: &str| {
+            Capability::Other(other.to_string())
+        }),
+        eol,
+    );
 
     let (input, capability) = alt((
         top,
@@ -102,6 +112,8 @@ fn capability(input: &str) -> IResult<&str, Capability> {
         expire,
         uidl,
         implementation,
+        stls,
+        other,
     ))(input)?;
 
     Ok((input, capability))
@@ -120,7 +132,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_capability() {
+    fn test_expire() {
         let data = "EXPIRE NEVER\r\n";
 
         let (input, capa) = capability(data).unwrap();

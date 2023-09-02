@@ -547,7 +547,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         self.check_capability(vec![
             Capability::User,
-            Capability::Sasl(vec![String::from("PLAIN")]),
+            // Capability::Sasl(vec![String::from("PLAIN")]),
         ])?;
 
         self.has_read_greeting()?;

@@ -32,6 +32,8 @@ pub enum Capability {
     Uidl,
     /// The type of authentication method the server prefers/uses.
     Implementation(String),
+    Stls,
+    Other(String),
 }
 
 pub type Capabilities = Vec<Capability>;

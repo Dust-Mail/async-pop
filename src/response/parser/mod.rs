@@ -230,8 +230,7 @@ mod test {
     fn test_capa() {
         let parser = ResponseParser::new(Capa);
 
-        let data =
-            "+OK List of capabilities follows\r\nUSER\r\nRESP-CODES\r\nSASL GSSAPI SKEY\r\n.\r\n";
+        let data = "+OK\r\nUSER\r\nRESP-CODES\r\nSASL GSSAPI SKEY\r\n.\r\n";
 
         let (output, response) = parser.parse(data).unwrap();
 
