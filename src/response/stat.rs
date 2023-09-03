@@ -18,7 +18,7 @@ impl StatResponse {
         }
     }
 
-    pub fn message_count(&self) -> usize {
+    pub fn counter(&self) -> usize {
         self.message_count
     }
 

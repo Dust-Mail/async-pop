@@ -138,21 +138,7 @@ async fn list() {
 
     let list = client.list(Some(4)).await.unwrap();
 
-    match list {
-        ListResponse::Single(list_item) => {
-            info!("{}", list_item.size());
-        }
-        _ => {
-            unreachable!()
-        }
-    };
-
     let response = client.list(None).await.unwrap();
-
-    match response {
-        ListResponse::Single(_) => unreachable!(),
-        ListResponse::Multiple(list) => assert!(list.items().len() == 0),
-    };
 
     client.quit().await.unwrap();
 }

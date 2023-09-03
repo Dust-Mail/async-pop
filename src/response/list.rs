@@ -1,7 +1,9 @@
+use super::stat::StatResponse;
+
 #[derive(Debug)]
 pub enum ListResponse {
     Multiple(List),
-    Single(ListItem),
+    Single(StatResponse),
 }
 
 impl From<List> for ListResponse {
@@ -10,8 +12,8 @@ impl From<List> for ListResponse {
     }
 }
 
-impl From<ListItem> for ListResponse {
-    fn from(item: ListItem) -> Self {
+impl From<StatResponse> for ListResponse {
+    fn from(item: StatResponse) -> Self {
         Self::Single(item)
     }
 }

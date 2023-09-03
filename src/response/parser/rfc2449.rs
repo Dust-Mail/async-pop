@@ -3,19 +3,19 @@ use std::time::Duration;
 use nom::{
     branch::alt,
     bytes::complete::tag_no_case,
-    character::complete::{digit1, not_line_ending, space0, space1},
+    character::complete::{digit1, one_of, space0, space1},
     combinator::{map, map_res, opt, value},
-    multi::{many_till, separated_list0},
+    multi::{many1, many_till, separated_list0},
     sequence::{preceded, terminated},
     IResult,
 };
 
 use crate::response::{
     capability::{Capability, Expiration},
-    ResponseType,
+    Response,
 };
 
-use super::{end_of_multiline, eol, message_parser};
+use super::core::{end_of_multiline, eol, message_parser};
 
 fn sasl_mechanism(input: &str) -> IResult<&str, &str> {
     alt((
@@ -85,6 +85,17 @@ fn implementation(input: &str) -> IResult<&str, Capability> {
     Ok((input, capa))
 }
 
+fn unknown_capability(input: &str) -> IResult<&str, Capability> {
+    let name = many1(one_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"));
+
+    terminated(
+        map(name, |other: Vec<char>| {
+            Capability::Other(other.iter().collect())
+        }),
+        eol,
+    )(input)
+}
+
 fn capability(input: &str) -> IResult<&str, Capability> {
     let top = terminated(value(Capability::Top, tag_no_case("TOP")), eol);
     let user = terminated(value(Capability::User, tag_no_case("USER")), eol);
@@ -95,12 +106,6 @@ fn capability(input: &str) -> IResult<&str, Capability> {
     );
     let uidl = terminated(value(Capability::Uidl, tag_no_case("UIDL")), eol);
     let stls = terminated(value(Capability::Stls, tag_no_case("STLS")), eol);
-    let other = terminated(
-        map(not_line_ending, |other: &str| {
-            Capability::Other(other.to_string())
-        }),
-        eol,
-    );
 
     let (input, capability) = alt((
         top,
@@ -113,18 +118,18 @@ fn capability(input: &str) -> IResult<&str, Capability> {
         uidl,
         implementation,
         stls,
-        other,
+        unknown_capability,
     ))(input)?;
 
     Ok((input, capability))
 }
 
-pub(crate) fn capability_response(input: &str) -> IResult<&str, ResponseType> {
+pub(crate) fn capability_response(input: &str) -> IResult<&str, Response> {
     let (input, _message) = message_parser(input)?;
 
     let (input, (capabilities, _end)) = many_till(capability, end_of_multiline)(input)?;
 
-    Ok((input, ResponseType::Capability(capabilities)))
+    Ok((input, Response::Capability(capabilities)))
 }
 
 #[cfg(test)]

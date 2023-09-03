@@ -1,14 +1,19 @@
 use byte_pool::BytePool;
 use bytes::{BufMut, Bytes, BytesMut};
+use futures::Stream;
 use lazy_static::lazy_static;
 use log::{info, trace};
-use std::str;
+use std::{
+    pin::Pin,
+    str,
+    task::{Context, Poll},
+};
 
 use crate::{
     command::Command,
     error::{err, ErrorKind},
     request::Request,
-    response::{Response, ResponseType},
+    response::Response,
     runtime::{
         io::{Read, ReadExt, Write, WriteExt},
         Instant,
@@ -25,6 +30,16 @@ pub struct PopStream<S: Read + Write + Unpin> {
     last_activity: Option<Instant>,
     stream: S,
 }
+
+// impl<S: Read + Write + Unpin> PopStream<S> {
+//     fn decode() -> Result<Option<Response>> {}
+// }
+
+// impl<S: Read + Write + Unpin> Stream for PopStream<S> {
+//     type Item = Response;
+
+//     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {}
+// }
 
 impl<S: Read + Write + Unpin> PopStream<S> {
     const CHUNK_SIZE: usize = 2048;
@@ -43,16 +58,16 @@ impl<S: Read + Write + Unpin> PopStream<S> {
 
         self.send_bytes(request.to_string()).await?;
 
-        self.read_response(request).await
+        self.read_response().await
     }
 
-    pub async fn read_response<C: Into<Command>>(&mut self, command: C) -> Result<Response> {
+    pub async fn read_response(&mut self) -> Result<Response> {
         let resp_bytes = self.read_bytes().await?;
 
-        let response = Response::from_bytes(resp_bytes, command.into())?;
+        let response = Response::from_bytes(resp_bytes)?;
 
-        match response.body() {
-            ResponseType::Err(err) => {
+        match response {
+            Response::Err(err) => {
                 err!(ErrorKind::ServerError, "{}", err)
             }
             _ => {}

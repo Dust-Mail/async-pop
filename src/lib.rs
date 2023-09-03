@@ -61,7 +61,7 @@ use response::{
     list::ListResponse,
     stat::StatResponse,
     uidl::UidlResponse,
-    ResponseType,
+    Response,
 };
 use stream::PopStream;
 
@@ -270,7 +270,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         let response = socket.send_request(request).await?;
 
         match response.into() {
-            ResponseType::Uidl(resp) => Ok(resp),
+            Response::Uidl(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected uidl response"
@@ -302,7 +302,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         let response = socket.send_request(request).await?;
 
         match response.into() {
-            ResponseType::Top(resp) => Ok(resp),
+            Response::Bytes(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected top response"
@@ -367,7 +367,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         let response = socket.send_request(request).await?;
 
         match response.into() {
-            ResponseType::Message(resp) => Ok(resp),
+            Response::Message(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected dele response"
@@ -394,7 +394,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         let response = socket.send_request(Rset).await?;
 
         match response.into() {
-            ResponseType::Message(resp) => Ok(resp),
+            Response::Message(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected rset response"
@@ -437,7 +437,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         let response = socket.send_request(request).await?;
 
         match response.into() {
-            ResponseType::Retr(resp) => Ok(resp),
+            Response::Bytes(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected retr response"
@@ -461,7 +461,8 @@ impl<S: Read + Write + Unpin> Client<S> {
         let response = socket.send_request(request).await?;
 
         match response.into() {
-            ResponseType::List(resp) => Ok(resp),
+            Response::List(list) => Ok(list.into()),
+            Response::Stat(stat) => Ok(stat.into()),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected list response"
@@ -475,7 +476,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         let response = socket.send_request(Stat).await?;
 
         match response.into() {
-            ResponseType::Stat(resp) => Ok(resp),
+            Response::Stat(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected stat response"
@@ -504,7 +505,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         self.state = ClientState::Transaction;
 
         match response.into() {
-            ResponseType::Message(resp) => Ok(resp),
+            Response::Message(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected apop response"
@@ -530,7 +531,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         self.state = ClientState::Transaction;
 
         match response.into() {
-            ResponseType::Message(resp) => Ok(resp),
+            Response::Message(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected auth response"
@@ -571,7 +572,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         self.state = ClientState::Transaction;
 
         let user_response_str = match user_response.into() {
-            ResponseType::Message(resp) => resp,
+            Response::Message(resp) => resp,
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected user response"
@@ -579,7 +580,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         };
 
         let pass_response_str = match pass_response.into() {
-            ResponseType::Message(resp) => resp,
+            Response::Message(resp) => resp,
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected pass response"
@@ -613,7 +614,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         self.capabilities.clear();
 
         match response.into() {
-            ResponseType::Message(resp) => Ok(resp),
+            Response::Message(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected quit response"
@@ -655,7 +656,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         let response = stream.send_request(Capa).await?;
 
         match response.into() {
-            ResponseType::Capability(resp) => Ok(resp),
+            Response::Capability(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected capa response"
@@ -679,10 +680,10 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         let socket = self.inner_mut()?;
 
-        let response = socket.read_response(Greet).await?;
+        let response = socket.read_response().await?;
 
         match response.into() {
-            ResponseType::Message(resp) => {
+            Response::Message(resp) => {
                 self.greeting = Some(resp.clone());
                 self.read_greeting = true;
 
