@@ -1,4 +1,4 @@
-use super::types::{message::Message, number::Number};
+use super::types::{message::Text, number::Number};
 
 #[derive(Debug)]
 pub enum UidlResponse {
@@ -20,12 +20,12 @@ impl From<UniqueId> for UidlResponse {
 
 #[derive(Debug)]
 pub struct Uidl {
-    message: Message,
+    message: Text,
     items: Vec<UniqueId>,
 }
 
 impl Uidl {
-    pub fn new<M: Into<Message>>(message: M, items: Vec<UniqueId>) -> Self {
+    pub fn new<M: Into<Text>>(message: M, items: Vec<UniqueId>) -> Self {
         Self {
             message: message.into(),
             items,
@@ -36,7 +36,7 @@ impl Uidl {
         self.items.as_ref()
     }
 
-    pub fn message(&self) -> &Message {
+    pub fn message(&self) -> &Text {
         &self.message
     }
 }
@@ -44,14 +44,14 @@ impl Uidl {
 #[derive(Debug)]
 pub struct UniqueId {
     index: Number,
-    id: Message,
+    id: Text,
 }
 
 impl UniqueId {
-    pub fn new<I: Into<Number>>(index: I, id: Message) -> Self {
+    pub fn new<I: Into<Number>, D: Into<Text>>(index: I, id: D) -> Self {
         Self {
             index: index.into(),
-            id,
+            id: id.into(),
         }
     }
 
@@ -59,7 +59,7 @@ impl UniqueId {
         &self.index
     }
 
-    pub fn id(&self) -> &Message {
+    pub fn id(&self) -> &Text {
         &self.id
     }
 }

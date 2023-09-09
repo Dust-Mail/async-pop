@@ -60,7 +60,7 @@ use response::{
     capability::{Capabilities, Capability},
     list::ListResponse,
     stat::StatResponse,
-    types::message::Message,
+    types::message::Text,
     uidl::UidlResponse,
     Response,
 };
@@ -87,7 +87,7 @@ pub struct Client<S: Write + Read + Unpin> {
     inner: Option<PopStream<S>>,
     capabilities: Capabilities,
     marked_as_del: Vec<usize>,
-    greeting: Option<Message>,
+    greeting: Option<Text>,
     read_greeting: bool,
     state: ClientState,
 }
@@ -355,7 +355,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     ///
     /// println!("{}", is_deleted);
     /// ```
-    pub async fn dele(&mut self, msg_number: usize) -> Result<Message> {
+    pub async fn dele(&mut self, msg_number: usize) -> Result<Text> {
         self.check_deleted(&msg_number)?;
 
         let socket = self.inner_mut()?;
@@ -388,7 +388,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// client.rset().unwrap();
     /// ```
     /// https://www.rfc-editor.org/rfc/rfc1939#page-9
-    pub async fn rset(&mut self) -> Result<Message> {
+    pub async fn rset(&mut self) -> Result<Text> {
         let socket = self.inner_mut()?;
 
         let response = socket.send_request(Rset).await?;
@@ -484,11 +484,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
-    pub async fn apop<N: AsRef<str>, D: AsRef<str>>(
-        &mut self,
-        name: N,
-        digest: D,
-    ) -> Result<Message> {
+    pub async fn apop<N: AsRef<str>, D: AsRef<str>>(&mut self, name: N, digest: D) -> Result<Text> {
         self.check_client_state(ClientState::Authentication)?;
 
         self.has_read_greeting()?;
@@ -513,7 +509,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
-    pub async fn auth<U: AsRef<str>>(&mut self, token: U) -> Result<Message> {
+    pub async fn auth<U: AsRef<str>>(&mut self, token: U) -> Result<Text> {
         self.check_client_state(ClientState::Authentication)?;
 
         self.check_capability(vec![Capability::Sasl(vec!["XOAUTH2".into()])])?;
@@ -543,7 +539,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         &mut self,
         user: U,
         password: P,
-    ) -> Result<(Message, Message)> {
+    ) -> Result<(Text, Text)> {
         self.check_client_state(ClientState::Authentication)?;
 
         self.check_capability(vec![
@@ -601,7 +597,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// - +OK
     ///
     /// https://www.rfc-editor.org/rfc/rfc1939#page-5
-    pub async fn quit(&mut self) -> Result<Message> {
+    pub async fn quit(&mut self) -> Result<Text> {
         let socket = self.inner_mut()?;
 
         let response = socket.send_request(Quit).await?;
@@ -675,7 +671,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
-    async fn read_greeting(&mut self) -> Result<Message> {
+    async fn read_greeting(&mut self) -> Result<Text> {
         assert!(!self.read_greeting, "Cannot read greeting twice");
 
         let socket = self.inner_mut()?;
@@ -697,7 +693,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     }
 
     /// The greeting that the POP server sent when the connection opened.
-    pub fn greeting(&self) -> Option<&Message> {
+    pub fn greeting(&self) -> Option<&Text> {
         match self.greeting.as_ref() {
             Some(greeting) => Some(greeting),
             None => None,

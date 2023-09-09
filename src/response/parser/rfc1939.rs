@@ -106,7 +106,7 @@ fn uidl(input: &[u8]) -> IResult<&[u8], UniqueId> {
     let (input, id) = UniqueIdParser::parse(input)?;
     let (input, _) = eol(input)?;
 
-    Ok((input, UniqueId::new(index, id.into())))
+    Ok((input, UniqueId::new(index, id)))
 }
 
 pub(crate) fn uidl_list_response(input: &[u8]) -> IResult<&[u8], Response> {
@@ -164,6 +164,8 @@ pub(crate) fn string_response(input: &[u8]) -> IResult<&[u8], Response> {
 
 #[cfg(test)]
 mod test {
+    use crate::response::types::DataType;
+
     use super::*;
 
     #[test]

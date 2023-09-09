@@ -49,7 +49,7 @@ pub(crate) fn parse(input: &[u8]) -> IResult<&[u8], Response> {
 
 #[cfg(test)]
 mod test {
-    use crate::response::uidl::UidlResponse;
+    use crate::response::{types::DataType, uidl::UidlResponse};
 
     use super::*;
 

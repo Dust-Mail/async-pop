@@ -9,7 +9,7 @@ use bytes::Bytes;
 use nom::IResult;
 
 use self::{
-    capability::Capability, list::List, stat::StatResponse, types::message::Message,
+    capability::Capability, list::List, stat::StatResponse, types::message::Text,
     uidl::UidlResponse,
 };
 
@@ -35,8 +35,8 @@ pub enum Response {
     Bytes(Bytes),
     Uidl(UidlResponse),
     Capability(Vec<Capability>),
-    Message(Message),
-    Err(Message),
+    Message(Text),
+    Err(Text),
 }
 
 impl Response {

@@ -9,7 +9,14 @@ use log::info;
 #[cfg(feature = "runtime-tokio")]
 use tokio::net::TcpStream;
 
-use crate::{response::uidl::UidlResponse, ClientState};
+use crate::{
+    response::{
+        capability::{Capability, Expiration},
+        types::DataType,
+        uidl::UidlResponse,
+    },
+    ClientState,
+};
 
 use super::Client;
 
@@ -152,7 +159,14 @@ async fn e2e_capa() {
 
     let capas = client.capa().await.unwrap();
 
-    println!("{:?}", capas);
+    for capa in capas {
+        match capa {
+            Capability::LoginDelay(time) => {
+                println!("{}", time.value().unwrap().as_secs())
+            }
+            _ => {}
+        }
+    }
 
     client.quit().await.unwrap();
 }

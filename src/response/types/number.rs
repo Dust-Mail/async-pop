@@ -8,7 +8,12 @@ use bytes::Bytes;
 
 use crate::error::{Error, Result};
 
+use super::DataType;
+
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Clone)]
+/// Represents a Pop3 number data type.
+///
+/// Get its real value by calling `value()` from the [DataType] trait
 pub struct Number {
     inner: Bytes,
 }
@@ -43,27 +48,27 @@ impl From<Bytes> for Number {
 
 impl Display for Number {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let number = self.lossy_str();
+        let number = self.as_str_lossy();
 
         write!(f, "{}", number)
     }
 }
 
-impl Number {
-    pub fn raw(&self) -> &[u8] {
+impl DataType<usize> for Number {
+    fn raw(&self) -> &[u8] {
         &self.inner
     }
 
-    pub fn lossy_str(&self) -> Cow<'_, str> {
+    fn as_str_lossy(&self) -> Cow<'_, str> {
         String::from_utf8_lossy(&self.inner)
     }
 
-    pub fn value_str(&self) -> Result<&str> {
+    fn as_str(&self) -> Result<&str> {
         Ok(std::str::from_utf8(&self.inner)?)
     }
 
-    pub fn value(&self) -> Result<usize> {
-        let string = self.value_str()?;
+    fn value(&self) -> Result<usize> {
+        let string = self.as_str()?;
 
         let number: usize = string.parse()?;
 
@@ -72,6 +77,9 @@ impl Number {
 }
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Clone)]
+/// Represents a Pop3 duration data type.
+///
+/// Get its real value by calling `value()` from the [DataType] trait
 pub struct Duration {
     inner: Number,
     to_secs_multiplier: u64,
@@ -84,8 +92,38 @@ impl Duration {
             to_secs_multiplier,
         }
     }
+}
 
-    pub fn value(&self) -> Result<time::Duration> {
+impl Display for Duration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let number = self.as_str_lossy();
+
+        write!(f, "{}", number)
+    }
+}
+
+impl TryInto<time::Duration> for Duration {
+    type Error = Error;
+
+    fn try_into(self) -> result::Result<time::Duration, Self::Error> {
+        self.value()
+    }
+}
+
+impl DataType<time::Duration> for Duration {
+    fn raw(&self) -> &[u8] {
+        self.inner.raw()
+    }
+
+    fn as_str_lossy(&self) -> Cow<'_, str> {
+        self.inner.as_str_lossy()
+    }
+
+    fn as_str(&self) -> Result<&str> {
+        self.inner.as_str()
+    }
+
+    fn value(&self) -> Result<time::Duration> {
         let number = self.inner.value()? as u64;
 
         let duration = time::Duration::from_secs(number * self.to_secs_multiplier);
