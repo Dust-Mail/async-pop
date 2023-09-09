@@ -15,8 +15,8 @@ use nom::{
 use crate::{
     constants::{ERR, OK},
     response::{
-        list::{List, ListItem},
-        stat::StatResponse,
+        list::List,
+        stat::Stat,
         uidl::{Uidl, UniqueId},
         Response, Status,
     },
@@ -33,14 +33,14 @@ pub(crate) fn status<'a>(input: &'a [u8]) -> IResult<&'a [u8], Status> {
     )(input)
 }
 
-fn stat(input: &[u8]) -> IResult<&[u8], StatResponse> {
+fn stat(input: &[u8]) -> IResult<&[u8], Stat> {
     let (input, count) = digit1(input)?;
     let (input, _) = space1(input)?;
     let (input, size) = digit1(input)?;
     let (input, _) = opt(not_line_ending)(input)?;
     let (input, _) = eol(input)?;
 
-    Ok((input, StatResponse::new(count, size)))
+    Ok((input, Stat::new(count, size)))
 }
 
 pub(crate) fn stat_response(input: &[u8]) -> IResult<&[u8], Response> {
@@ -49,17 +49,7 @@ pub(crate) fn stat_response(input: &[u8]) -> IResult<&[u8], Response> {
     Ok((input, Response::Stat(stats)))
 }
 
-fn list(input: &[u8]) -> IResult<&[u8], ListItem> {
-    let (input, index) = digit1(input)?;
-    let (input, _) = space1(input)?;
-    let (input, size) = digit1(input)?;
-    let (input, _) = opt(not_line_ending)(input)?;
-    let (input, _) = eol(input)?;
-
-    Ok((input, ListItem::new(index, size)))
-}
-
-fn list_stats(input: &[u8]) -> IResult<&[u8], StatResponse> {
+fn list_stats(input: &[u8]) -> IResult<&[u8], Stat> {
     let (input, count) = digit1(input)?;
     let (input, _) = space1(input)?;
     let (input, _) = take_while(is_alphanumeric)(input)?;
@@ -72,15 +62,18 @@ fn list_stats(input: &[u8]) -> IResult<&[u8], StatResponse> {
 
     let (input, _) = eol(input)?;
 
-    let stats = StatResponse::new(count, size);
+    let stats = Stat::new(count, size);
 
     Ok((input, stats))
 }
 
 pub(crate) fn list_response<'a>(input: &'a [u8]) -> IResult<&'a [u8], Response> {
-    let (input, stats) = list_stats(input)?;
+    let (input, stats) = alt((
+        map(list_stats, |stats| Some(stats)),
+        map(tag_no_case("scan listing follows"), |_| None),
+    ))(input)?;
 
-    let (input, (items, _end)) = many_till(list, end_of_multiline)(input)?;
+    let (input, (items, _end)) = many_till(stat, end_of_multiline)(input)?;
 
     let list = List::new(stats, items);
 
@@ -169,6 +162,40 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_status() {
+        let data = b"+OK\r\n";
+
+        let (output, resp_status) = status(data).unwrap();
+
+        assert!(output == b"\r\n");
+        assert!(resp_status.success());
+
+        let data = b"-ERR\r\n";
+
+        let (output, resp_status) = status(data).unwrap();
+
+        assert!(output == b"\r\n");
+        assert!(!resp_status.success());
+    }
+
+    #[test]
+    fn test_stat() {
+        let data = b"1 120 bla bla\r\n";
+
+        let (output, stats) = stat(data).unwrap();
+
+        assert!(output.is_empty());
+        assert!(stats.counter().value().unwrap() == 1);
+        assert!(stats.size().value().unwrap() == 120);
+
+        let data = b"1 sdf bla bla\r\n";
+
+        let result = stat(data);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_list_stats() {
         let data = b"2 messages (320 bytes)\r\n";
 
@@ -177,7 +204,13 @@ mod test {
         assert!(input.is_empty());
 
         assert!(stats.counter().value().unwrap() == 2);
-        assert!(stats.size().value().unwrap() == 320)
+        assert!(stats.size().value().unwrap() == 320);
+
+        let data = b"2 sdf%fg (320 sdf#$%fdg)\r\n";
+
+        let result = list_stats(data);
+
+        assert!(result.is_err());
     }
 
     #[test]

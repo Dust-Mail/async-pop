@@ -1,12 +1,12 @@
 use super::types::number::Number;
 
 #[derive(Debug)]
-pub struct StatResponse {
+pub struct Stat {
     message_count: Number,
     size: Number,
 }
 
-impl StatResponse {
+impl Stat {
     pub fn new<C: Into<Number>, S: Into<Number>>(message_count: C, size: S) -> Self {
         Self {
             message_count: message_count.into(),

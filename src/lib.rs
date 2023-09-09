@@ -59,7 +59,7 @@ use request::Request;
 use response::{
     capability::{Capabilities, Capability},
     list::ListResponse,
-    stat::StatResponse,
+    stat::Stat,
     types::message::Text,
     uidl::UidlResponse,
     Response,
@@ -470,7 +470,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
-    pub async fn stat(&mut self) -> Result<StatResponse> {
+    pub async fn stat(&mut self) -> Result<Stat> {
         let socket = self.inner_mut()?;
 
         let response = socket.send_request(Stat).await?;

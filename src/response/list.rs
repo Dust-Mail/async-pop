@@ -1,9 +1,9 @@
-use super::{stat::StatResponse, types::number::Number};
+use super::stat::Stat;
 
 #[derive(Debug)]
 pub enum ListResponse {
     Multiple(List),
-    Single(StatResponse),
+    Single(Stat),
 }
 
 impl From<List> for ListResponse {
@@ -12,51 +12,28 @@ impl From<List> for ListResponse {
     }
 }
 
-impl From<StatResponse> for ListResponse {
-    fn from(item: StatResponse) -> Self {
+impl From<Stat> for ListResponse {
+    fn from(item: Stat) -> Self {
         Self::Single(item)
     }
 }
 
 #[derive(Debug)]
 pub struct List {
-    stats: StatResponse,
-    items: Vec<ListItem>,
+    stats: Option<Stat>,
+    items: Vec<Stat>,
 }
 
 impl List {
-    pub fn new(stats: StatResponse, items: Vec<ListItem>) -> Self {
+    pub fn new(stats: Option<Stat>, items: Vec<Stat>) -> Self {
         Self { stats, items }
     }
 
-    pub fn items(&self) -> &[ListItem] {
+    pub fn items(&self) -> &[Stat] {
         self.items.as_ref()
     }
 
-    pub fn stats(&self) -> &StatResponse {
-        &self.stats
-    }
-}
-
-#[derive(Debug)]
-pub struct ListItem {
-    index: Number,
-    size: Number,
-}
-
-impl ListItem {
-    pub fn new<I: Into<Number>, S: Into<Number>>(index: I, size: S) -> Self {
-        Self {
-            index: index.into(),
-            size: size.into(),
-        }
-    }
-
-    pub fn index(&self) -> &Number {
-        &self.index
-    }
-
-    pub fn size(&self) -> &Number {
-        &self.size
+    pub fn stats(&self) -> Option<&Stat> {
+        self.stats.as_ref()
     }
 }

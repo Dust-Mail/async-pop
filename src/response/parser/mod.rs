@@ -54,23 +54,6 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_status() {
-        let data = b"+OK\r\n";
-
-        let (output, resp_status) = status(data).unwrap();
-
-        assert!(output == b"\r\n");
-        assert!(resp_status.success());
-
-        let data = b"-ERR\r\n";
-
-        let (output, resp_status) = status(data).unwrap();
-
-        assert!(output == b"\r\n");
-        assert!(!resp_status.success());
-    }
-
-    #[test]
     fn test_list() {
         let data = b"+OK 2 messages (320 bytes)\r\n1 120 more info\r\n2 200 info info\r\n.\r\n";
 

@@ -9,8 +9,7 @@ use bytes::Bytes;
 use nom::IResult;
 
 use self::{
-    capability::Capability, list::List, stat::StatResponse, types::message::Text,
-    uidl::UidlResponse,
+    capability::Capability, list::List, stat::Stat, types::message::Text, uidl::UidlResponse,
 };
 
 #[derive(Debug)]
@@ -30,7 +29,7 @@ impl Status {
 
 #[derive(Debug)]
 pub enum Response {
-    Stat(StatResponse),
+    Stat(Stat),
     List(List),
     Bytes(Bytes),
     Uidl(UidlResponse),

@@ -1,6 +1,6 @@
 use std::env;
 
-use async_native_tls::{TlsConnector, TlsStream};
+use async_native_tls::TlsConnector;
 // use async_native_tls::{TlsConnector, TlsStream};
 #[cfg(feature = "runtime-async-std")]
 use async_std::net::TcpStream;
@@ -10,11 +10,7 @@ use log::info;
 use tokio::net::TcpStream;
 
 use crate::{
-    response::{
-        capability::{Capability, Expiration},
-        types::DataType,
-        uidl::UidlResponse,
-    },
+    response::{capability::Capability, types::DataType},
     ClientState,
 };
 
@@ -39,7 +35,7 @@ fn create_client_info() -> ClientInfo {
     }
 }
 
-async fn create_logged_in_client() -> Client<TlsStream<TcpStream>> {
+async fn create_logged_in_client() -> Client<TcpStream> {
     let client_info = create_client_info();
     let server = client_info.server.as_ref();
     let port = client_info.port;
@@ -47,9 +43,7 @@ async fn create_logged_in_client() -> Client<TlsStream<TcpStream>> {
     let username = client_info.username;
     let password = client_info.password;
 
-    let tls = TlsConnector::new();
-
-    let mut client = super::connect((server, port), server, &tls).await.unwrap();
+    let mut client = super::connect_plain((server, port)).await.unwrap();
 
     client.login(username, password).await.unwrap();
 
@@ -84,8 +78,6 @@ async fn e2e_connect() {
 
     let server = client_info.server.as_ref();
     let port = client_info.port;
-
-    let tls = TlsConnector::new();
 
     let mut client = super::connect_plain((server, port)).await.unwrap();
 
