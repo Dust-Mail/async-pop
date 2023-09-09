@@ -60,6 +60,7 @@ use response::{
     capability::{Capabilities, Capability},
     list::ListResponse,
     stat::StatResponse,
+    types::message::Message,
     uidl::UidlResponse,
     Response,
 };
@@ -86,7 +87,7 @@ pub struct Client<S: Write + Read + Unpin> {
     inner: Option<PopStream<S>>,
     capabilities: Capabilities,
     marked_as_del: Vec<usize>,
-    greeting: Option<String>,
+    greeting: Option<Message>,
     read_greeting: bool,
     state: ClientState,
 }
@@ -269,12 +270,14 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         let response = socket.send_request(request).await?;
 
-        match response.into() {
+        match response {
             Response::Uidl(resp) => Ok(resp),
-            _ => err!(
-                ErrorKind::UnexpectedResponse,
-                "Did not received the expected uidl response"
-            ),
+            _ => {
+                err!(
+                    ErrorKind::UnexpectedResponse,
+                    "Did not received the expected uidl response"
+                )
+            }
         }
     }
 
@@ -301,7 +304,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         let response = socket.send_request(request).await?;
 
-        match response.into() {
+        match response {
             Response::Bytes(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
@@ -355,7 +358,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     ///
     /// println!("{}", is_deleted);
     /// ```
-    pub async fn dele(&mut self, msg_number: usize) -> Result<String> {
+    pub async fn dele(&mut self, msg_number: usize) -> Result<Message> {
         self.check_deleted(&msg_number)?;
 
         let socket = self.inner_mut()?;
@@ -366,7 +369,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         let response = socket.send_request(request).await?;
 
-        match response.into() {
+        match response {
             Response::Message(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
@@ -388,12 +391,12 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// client.rset().unwrap();
     /// ```
     /// https://www.rfc-editor.org/rfc/rfc1939#page-9
-    pub async fn rset(&mut self) -> Result<String> {
+    pub async fn rset(&mut self) -> Result<Message> {
         let socket = self.inner_mut()?;
 
         let response = socket.send_request(Rset).await?;
 
-        match response.into() {
+        match response {
             Response::Message(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
@@ -436,7 +439,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         let response = socket.send_request(request).await?;
 
-        match response.into() {
+        match response {
             Response::Bytes(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
@@ -460,7 +463,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         let response = socket.send_request(request).await?;
 
-        match response.into() {
+        match response {
             Response::List(list) => Ok(list.into()),
             Response::Stat(stat) => Ok(stat.into()),
             _ => err!(
@@ -488,7 +491,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         &mut self,
         name: N,
         digest: D,
-    ) -> Result<String> {
+    ) -> Result<Message> {
         self.check_client_state(ClientState::Authentication)?;
 
         self.has_read_greeting()?;
@@ -504,7 +507,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         self.state = ClientState::Transaction;
 
-        match response.into() {
+        match response {
             Response::Message(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
@@ -513,10 +516,10 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
-    pub async fn auth<U: AsRef<str>>(&mut self, token: U) -> Result<String> {
+    pub async fn auth<U: AsRef<str>>(&mut self, token: U) -> Result<Message> {
         self.check_client_state(ClientState::Authentication)?;
 
-        self.check_capability(vec![Capability::Sasl(vec![String::from("XOAUTH2")])])?;
+        self.check_capability(vec![Capability::Sasl(vec!["XOAUTH2".into()])])?;
 
         self.has_read_greeting()?;
 
@@ -530,7 +533,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         self.state = ClientState::Transaction;
 
-        match response.into() {
+        match response {
             Response::Message(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
@@ -543,7 +546,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         &mut self,
         user: U,
         password: P,
-    ) -> Result<(String, String)> {
+    ) -> Result<(Message, Message)> {
         self.check_client_state(ClientState::Authentication)?;
 
         self.check_capability(vec![
@@ -571,7 +574,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         self.state = ClientState::Transaction;
 
-        let user_response_str = match user_response.into() {
+        let user_response_str = match user_response {
             Response::Message(resp) => resp,
             _ => err!(
                 ErrorKind::UnexpectedResponse,
@@ -579,7 +582,7 @@ impl<S: Read + Write + Unpin> Client<S> {
             ),
         };
 
-        let pass_response_str = match pass_response.into() {
+        let pass_response_str = match pass_response {
             Response::Message(resp) => resp,
             _ => err!(
                 ErrorKind::UnexpectedResponse,
@@ -601,7 +604,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// - +OK
     ///
     /// https://www.rfc-editor.org/rfc/rfc1939#page-5
-    pub async fn quit(&mut self) -> Result<String> {
+    pub async fn quit(&mut self) -> Result<Message> {
         let socket = self.inner_mut()?;
 
         let response = socket.send_request(Quit).await?;
@@ -613,7 +616,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         self.marked_as_del.clear();
         self.capabilities.clear();
 
-        match response.into() {
+        match response {
             Response::Message(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
@@ -675,7 +678,7 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
-    async fn read_greeting(&mut self) -> Result<String> {
+    async fn read_greeting(&mut self) -> Result<Message> {
         assert!(!self.read_greeting, "Cannot read greeting twice");
 
         let socket = self.inner_mut()?;
@@ -697,7 +700,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     }
 
     /// The greeting that the POP server sent when the connection opened.
-    pub fn greeting(&self) -> Option<&str> {
+    pub fn greeting(&self) -> Option<&Message> {
         match self.greeting.as_ref() {
             Some(greeting) => Some(greeting),
             None => None,

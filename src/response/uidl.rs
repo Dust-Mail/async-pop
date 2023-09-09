@@ -1,3 +1,5 @@
+use super::types::{message::Message, number::Number};
+
 #[derive(Debug)]
 pub enum UidlResponse {
     Multiple(Uidl),
@@ -18,43 +20,46 @@ impl From<UniqueId> for UidlResponse {
 
 #[derive(Debug)]
 pub struct Uidl {
-    message: Option<String>,
-    list: Vec<UniqueId>,
+    message: Message,
+    items: Vec<UniqueId>,
 }
 
 impl Uidl {
-    pub fn new<M: Into<String>>(message: Option<M>, list: Vec<UniqueId>) -> Self {
+    pub fn new<M: Into<Message>>(message: M, items: Vec<UniqueId>) -> Self {
         Self {
-            message: message.map(|msg| msg.into()),
-            list,
+            message: message.into(),
+            items,
         }
     }
 
-    pub fn list(&self) -> &[UniqueId] {
-        self.list.as_ref()
+    pub fn items(&self) -> &[UniqueId] {
+        self.items.as_ref()
     }
 
-    pub fn message(&self) -> Option<&String> {
-        self.message.as_ref()
+    pub fn message(&self) -> &Message {
+        &self.message
     }
 }
 
 #[derive(Debug)]
 pub struct UniqueId {
-    index: usize,
-    id: String,
+    index: Number,
+    id: Message,
 }
 
 impl UniqueId {
-    pub fn new(index: usize, id: String) -> Self {
-        Self { index, id }
+    pub fn new<I: Into<Number>>(index: I, id: Message) -> Self {
+        Self {
+            index: index.into(),
+            id,
+        }
     }
 
-    pub fn index(&self) -> usize {
-        self.index
+    pub fn index(&self) -> &Number {
+        &self.index
     }
 
-    pub fn id(&self) -> &str {
-        self.id.as_ref()
+    pub fn id(&self) -> &Message {
+        &self.id
     }
 }

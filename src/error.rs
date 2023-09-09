@@ -23,7 +23,6 @@ macro_rules! err {
 pub enum ErrorKind {
     Tls(TlsError),
     Io(IoError),
-
     ParseInt(ParseIntError),
     ParseString(Utf8Error),
     Nom,
@@ -39,6 +38,7 @@ pub enum ErrorKind {
     SendCommand,
     ParseResponse,
     InvalidResponse,
+    ResponseTooLarge,
     NoResponse,
     ServerError,
     ParseCommand,

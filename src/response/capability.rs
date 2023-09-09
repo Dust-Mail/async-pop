@@ -1,4 +1,6 @@
-use std::time::Duration;
+use bytes::Bytes;
+
+use super::types::number::Duration;
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Clone)]
 pub enum Expiration {
@@ -19,7 +21,7 @@ pub enum Capability {
     /// Whether the USER and PASS commands (login) are supported.
     User,
     /// Whether the use of a SASL based login is supported and if so what kinds. See https://www.rfc-editor.org/rfc/rfc1734
-    Sasl(Vec<String>),
+    Sasl(Vec<Bytes>),
     /// Whether the server uses extends response codes. See https://www.rfc-editor.org/rfc/rfc2449#section-8
     RespCodes,
     /// Whether there is a delay between each login and how long it is.
@@ -31,9 +33,9 @@ pub enum Capability {
     /// Whether the UIDL command is supported.
     Uidl,
     /// The type of authentication method the server prefers/uses.
-    Implementation(String),
+    Implementation(Bytes),
     Stls,
-    Other(String),
+    Other(Bytes),
 }
 
 pub type Capabilities = Vec<Capability>;

@@ -1,12 +1,14 @@
 use bytes::Bytes;
-
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_until, take_while_m_n},
-    character::complete::{digit1, not_line_ending, space0, space1},
-    combinator::{map, map_res, opt, value},
+    bytes::streaming::{tag, tag_no_case, take_until, take_while, take_while_m_n},
+    character::{
+        is_alphanumeric,
+        streaming::{char, digit1, not_line_ending, space0, space1},
+    },
+    combinator::{map, opt, value},
     multi::many_till,
-    sequence::terminated,
+    sequence::{delimited, terminated, tuple},
     IResult,
 };
 
@@ -22,7 +24,7 @@ use crate::{
 
 use super::core::{end_of_multiline, eol, message_parser};
 
-pub(crate) fn status<'a>(input: &'a str) -> IResult<&'a str, Status> {
+pub(crate) fn status<'a>(input: &'a [u8]) -> IResult<&'a [u8], Status> {
     terminated(
         map(alt((value(true, tag(OK)), value(false, tag(ERR)))), |val| {
             Status::new(val)
@@ -31,38 +33,56 @@ pub(crate) fn status<'a>(input: &'a str) -> IResult<&'a str, Status> {
     )(input)
 }
 
-fn stat(input: &str) -> IResult<&str, StatResponse> {
-    let (input, count) = map_res(digit1, str::parse)(input)?;
+fn stat(input: &[u8]) -> IResult<&[u8], StatResponse> {
+    let (input, count) = digit1(input)?;
     let (input, _) = space1(input)?;
-    let (input, size) = map_res(digit1, str::parse)(input)?;
+    let (input, size) = digit1(input)?;
     let (input, _) = opt(not_line_ending)(input)?;
     let (input, _) = eol(input)?;
 
     Ok((input, StatResponse::new(count, size)))
 }
 
-pub(crate) fn stat_response(input: &str) -> IResult<&str, Response> {
+pub(crate) fn stat_response(input: &[u8]) -> IResult<&[u8], Response> {
     let (input, stats) = stat(input)?;
 
     Ok((input, Response::Stat(stats)))
 }
 
-fn list(input: &str) -> IResult<&str, ListItem> {
-    let (input, index) = map_res(digit1, str::parse)(input)?;
+fn list(input: &[u8]) -> IResult<&[u8], ListItem> {
+    let (input, index) = digit1(input)?;
     let (input, _) = space1(input)?;
-    let (input, size) = map_res(digit1, str::parse)(input)?;
+    let (input, size) = digit1(input)?;
     let (input, _) = opt(not_line_ending)(input)?;
     let (input, _) = eol(input)?;
 
     Ok((input, ListItem::new(index, size)))
 }
 
-pub(crate) fn list_response(input: &str) -> IResult<&str, Response> {
-    let (input, message) = message_parser(input)?;
+fn list_stats(input: &[u8]) -> IResult<&[u8], StatResponse> {
+    let (input, count) = digit1(input)?;
+    let (input, _) = space1(input)?;
+    let (input, _) = take_while(is_alphanumeric)(input)?;
+    let (input, _) = space1(input)?;
+    let (input, (size, _, _)) = delimited(
+        char('('),
+        tuple((digit1, space1, take_while(is_alphanumeric))),
+        char(')'),
+    )(input)?;
+
+    let (input, _) = eol(input)?;
+
+    let stats = StatResponse::new(count, size);
+
+    Ok((input, stats))
+}
+
+pub(crate) fn list_response<'a>(input: &'a [u8]) -> IResult<&'a [u8], Response> {
+    let (input, stats) = list_stats(input)?;
 
     let (input, (items, _end)) = many_till(list, end_of_multiline)(input)?;
 
-    let list = List::new(message, items);
+    let list = List::new(stats, items);
 
     Ok((input, Response::List(list)))
 }
@@ -70,18 +90,18 @@ pub(crate) fn list_response(input: &str) -> IResult<&str, Response> {
 struct UniqueIdParser;
 
 impl UniqueIdParser {
-    fn is_valid_char(c: char) -> bool {
-        (c as u32) >= 0x21 && (c as u32) <= 0x7E
+    fn is_valid_char(c: u8) -> bool {
+        c >= 0x21 && c <= 0x7E
     }
 
-    pub fn parse(input: &str) -> IResult<&str, &str> {
+    pub fn parse(input: &[u8]) -> IResult<&[u8], &[u8]> {
         let (input, id) = take_while_m_n(1, 70, Self::is_valid_char)(input)?;
         Ok((input, id))
     }
 }
 
-fn uidl(input: &str) -> IResult<&str, UniqueId> {
-    let (input, index) = map_res(digit1, str::parse)(input)?;
+fn uidl(input: &[u8]) -> IResult<&[u8], UniqueId> {
+    let (input, index) = digit1(input)?;
     let (input, _) = space1(input)?;
     let (input, id) = UniqueIdParser::parse(input)?;
     let (input, _) = eol(input)?;
@@ -89,8 +109,8 @@ fn uidl(input: &str) -> IResult<&str, UniqueId> {
     Ok((input, UniqueId::new(index, id.into())))
 }
 
-pub(crate) fn uidl_list_response(input: &str) -> IResult<&str, Response> {
-    let (input, message) = message_parser(input)?;
+pub(crate) fn uidl_list_response(input: &[u8]) -> IResult<&[u8], Response> {
+    let (input, message) = terminated(tag_no_case("unique-id listing follows"), eol)(input)?;
 
     let (input, (list, _end)) = many_till(uidl, end_of_multiline)(input)?;
 
@@ -99,36 +119,80 @@ pub(crate) fn uidl_list_response(input: &str) -> IResult<&str, Response> {
     Ok((input, Response::Uidl(list.into())))
 }
 
-pub(crate) fn uidl_response(input: &str) -> IResult<&str, Response> {
+pub(crate) fn uidl_response(input: &[u8]) -> IResult<&[u8], Response> {
     let (input, unique_id) = uidl(input)?;
 
     Ok((input, Response::Uidl(unique_id.into())))
 }
 
-pub(crate) fn rfc822_response(input: &str) -> IResult<&str, Response> {
-    let (input, _message) = message_parser(input)?;
+pub(crate) fn retr_response(input: &[u8]) -> IResult<&[u8], Response> {
+    let (input, _message) = terminated(tag_no_case("message follows"), eol)(input)?;
 
-    let (input, content) = take_until(".\r\n")(input)?;
+    rfc822_response(input)
+}
 
+pub(crate) fn top_response(input: &[u8]) -> IResult<&[u8], Response> {
+    let (input, _message) = terminated(tag_no_case("top of message follows"), eol)(input)?;
+
+    rfc822_response(input)
+}
+
+fn rfc822_response(input: &[u8]) -> IResult<&[u8], Response> {
+    let (input, content) = take_until("\r\n.\r\n")(input)?;
+
+    let (input, _) = eol(input)?;
     let (input, _) = end_of_multiline(input)?;
 
-    let bytes = Bytes::from(content.to_string());
-
-    Ok((input, Response::Bytes(bytes)))
+    Ok((input, Response::Bytes(Bytes::copy_from_slice(content))))
 }
 
-pub(crate) fn error_response(input: &str) -> IResult<&str, Response> {
+pub(crate) fn error_response(input: &[u8]) -> IResult<&[u8], Response> {
     let (input, message) = message_parser(input)?;
 
-    let message = message.unwrap_or("");
+    let message = message.unwrap_or(b"");
 
-    Ok((input, Response::Err(message.to_string())))
+    Ok((input, Response::Err(message.into())))
 }
 
-pub(crate) fn string_response(input: &str) -> IResult<&str, Response> {
+pub(crate) fn string_response(input: &[u8]) -> IResult<&[u8], Response> {
     let (input, message) = message_parser(input)?;
 
-    let message = message.unwrap_or("");
+    let message = message.unwrap_or(b"");
 
-    Ok((input, Response::Message(message.to_string())))
+    Ok((input, Response::Message(message.into())))
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_list_stats() {
+        let data = b"2 messages (320 bytes)\r\n";
+
+        let (input, stats) = list_stats(data).unwrap();
+
+        assert!(input.is_empty());
+
+        assert!(stats.counter().value().unwrap() == 2);
+        assert!(stats.size().value().unwrap() == 320)
+    }
+
+    #[test]
+    fn test_rfc822() {
+        let data = b"Date: Thu, 9 Sep 2023 15:30:00 -0400\r\nFrom: John Doe <johndoe@example.com>\r\nTo: Jane Smith <janesmith@example.com>\r\nSubject: Hello, Jane!\r\n\r\nDear Jane,\r\n\r\nI hope this message finds you well. I just wanted to say hello and see how you're doing.\r\n\r\nBest regards,\r\nJohn\r\n.\r\n";
+
+        let (output, response) = rfc822_response(data).unwrap();
+
+        assert!(output.is_empty());
+
+        match response {
+            Response::Bytes(bytes) => {
+                assert!(bytes.len() == 266)
+            }
+            _ => {
+                unreachable!()
+            }
+        }
+    }
 }

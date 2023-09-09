@@ -1,16 +1,17 @@
-use std::str::{self};
-
 pub mod capability;
 pub mod list;
 mod parser;
 pub mod stat;
+pub mod types;
 pub mod uidl;
 
 use bytes::Bytes;
+use nom::IResult;
 
-use crate::error::{err, ErrorKind, Result};
-
-use self::{capability::Capability, list::List, stat::StatResponse, uidl::UidlResponse};
+use self::{
+    capability::Capability, list::List, stat::StatResponse, types::message::Message,
+    uidl::UidlResponse,
+};
 
 #[derive(Debug)]
 pub struct Status {
@@ -34,25 +35,12 @@ pub enum Response {
     Bytes(Bytes),
     Uidl(UidlResponse),
     Capability(Vec<Capability>),
-    Message(String),
-    Err(String),
+    Message(Message),
+    Err(Message),
 }
 
 impl Response {
-    pub fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Result<Self> {
-        let input = str::from_utf8(bytes.as_ref())?;
-
-        let response = match parser::parse(input) {
-            Ok((_, response)) => response,
-            Err(err) => {
-                err!(
-                    ErrorKind::ParseResponse,
-                    "Failed to parse POP server response: {}",
-                    err
-                )
-            }
-        };
-
-        Ok(response)
+    pub fn from_bytes(input: &[u8]) -> IResult<&[u8], Self> {
+        parser::parse(input)
     }
 }

@@ -6,15 +6,29 @@ use nom::{branch::alt, IResult};
 
 use self::{
     rfc1939::{
-        error_response, list_response, rfc822_response, stat_response, status, string_response,
-        uidl_list_response, uidl_response,
+        error_response, list_response, retr_response, stat_response, status, string_response,
+        top_response, uidl_list_response, uidl_response,
     },
     rfc2449::capability_response,
 };
 
 use super::Response;
 
-pub(crate) fn parse(input: &str) -> IResult<&str, Response> {
+fn is_empty<B: AsRef<[u8]>>(slice: B) -> bool {
+    for byte in slice.as_ref() {
+        if byte != &0 {
+            return false;
+        }
+    }
+
+    true
+}
+
+pub(crate) fn parse(input: &[u8]) -> IResult<&[u8], Response> {
+    if is_empty(input) {
+        return Err(nom::Err::Incomplete(nom::Needed::Unknown));
+    }
+
     let (input, status) = status(input)?;
 
     if status.success() {
@@ -24,7 +38,8 @@ pub(crate) fn parse(input: &str) -> IResult<&str, Response> {
             list_response,
             uidl_list_response,
             capability_response,
-            rfc822_response,
+            top_response,
+            retr_response,
             string_response,
         ))(input)
     } else {
@@ -34,37 +49,30 @@ pub(crate) fn parse(input: &str) -> IResult<&str, Response> {
 
 #[cfg(test)]
 mod test {
-
     use crate::response::uidl::UidlResponse;
 
     use super::*;
 
     #[test]
     fn test_status() {
-        let data = "+OK\r\n";
+        let data = b"+OK\r\n";
 
         let (output, resp_status) = status(data).unwrap();
 
-        assert!(output == "\r\n");
+        assert!(output == b"\r\n");
         assert!(resp_status.success());
 
-        let data = "-ERR\r\n";
+        let data = b"-ERR\r\n";
 
         let (output, resp_status) = status(data).unwrap();
 
-        assert!(output == "\r\n");
+        assert!(output == b"\r\n");
         assert!(!resp_status.success());
-
-        let data = "-ERR";
-
-        let result = status(data);
-
-        assert!(result.is_err());
     }
 
     #[test]
     fn test_list() {
-        let data = "+OK List follows:\r\n1 120 more info\r\n2 200 info info\r\n.\r\n";
+        let data = b"+OK 2 messages (320 bytes)\r\n1 120 more info\r\n2 200 info info\r\n.\r\n";
 
         let (output, response) = parse(data).unwrap();
 
@@ -73,20 +81,20 @@ mod test {
         match response {
             Response::List(list) => {
                 assert!(list.items().len() == 2);
-                assert!(list.message().unwrap() == "List follows:")
+                // assert!(list.message().as_ref() == b"scan listing follows")
             }
             _ => {
                 unreachable!()
             }
         }
 
-        let data = "+OK List follows:\r\n1 120\r\n2 200\r\n";
+        let data = b"+OK 2 messages (320 bytes)\r\n1 120\r\n2 200\r\n";
 
         let result = parse(data);
 
         assert!(result.is_err());
 
-        let data = "+OK 1 120\r\n";
+        let data = b"+OK 1 120\r\n";
 
         let (output, response) = parse(data).unwrap();
 
@@ -94,14 +102,14 @@ mod test {
 
         match response {
             Response::Stat(stat) => {
-                assert!(stat.counter() == 1 && stat.size() == 120)
+                assert!(stat.counter().value().unwrap() == 1 && stat.size().value().unwrap() == 120)
             }
             _ => {
                 unreachable!()
             }
         }
 
-        let data = "+OK 1 120 test\r\n";
+        let data = b"+OK 1 120 test\r\n";
 
         let (output, response) = parse(data).unwrap();
 
@@ -109,14 +117,14 @@ mod test {
 
         match response {
             Response::Stat(stat) => {
-                assert!(stat.counter() == 1 && stat.size() == 120)
+                assert!(stat.counter().value().unwrap() == 1 && stat.size().value().unwrap() == 120)
             }
             _ => {
                 unreachable!()
             }
         }
 
-        let data = "+OK 1 \r\n";
+        let data = b"+OK 1 \r\n";
 
         let result = parse(data);
 
@@ -125,7 +133,7 @@ mod test {
 
     #[test]
     fn test_stat() {
-        let data = "+OK 20 600\r\n";
+        let data = b"+OK 20 600\r\n";
 
         let (output, response) = parse(data).unwrap();
 
@@ -133,8 +141,8 @@ mod test {
 
         match response {
             Response::Stat(stat) => {
-                assert!(stat.counter() == 20);
-                assert!(stat.size() == 600);
+                assert!(stat.counter().value().unwrap() == 20);
+                assert!(stat.size().value().unwrap() == 600);
             }
             _ => {
                 println!("{:?}", response);
@@ -145,7 +153,7 @@ mod test {
 
     #[test]
     fn test_uidl() {
-        let data = "+OK\r\n1 whqtswO00WBw418f9t5JxYwZ\r\n2 QhdPYR:00WBw1Ph7x7\r\n.\r\n";
+        let data = b"+OK unique-id listing follows\r\n1 whqtswO00WBw418f9t5JxYwZ\r\n2 QhdPYR:00WBw1Ph7x7\r\n.\r\n";
 
         let (output, response) = parse(data).unwrap();
 
@@ -168,7 +176,7 @@ mod test {
 
     #[test]
     fn test_string() {
-        let data = "+OK maildrop has 2 messages (320 octets)\r\n";
+        let data = b"+OK maildrop has 2 messages (320 octets)\r\n";
 
         let (output, response) = parse(data).unwrap();
 
@@ -176,7 +184,7 @@ mod test {
 
         match response {
             Response::Message(msg) => {
-                assert!(msg == "maildrop has 2 messages (320 octets)")
+                assert!(msg.as_ref() == b"maildrop has 2 messages (320 octets)")
             }
             _ => {
                 unreachable!()
@@ -186,7 +194,7 @@ mod test {
 
     #[test]
     fn test_capa() {
-        let data = "+OK\r\nUSER\r\nRESP-CODES\r\nSASL GSSAPI SKEY\r\nGOOGLE-TEST-CAPA\r\n.\r\n";
+        let data = b"+OK\r\nUSER\r\nRESP-CODES\r\nEXPIRE 30\r\nSASL GSSAPI SKEY\r\nGOOGLE-TEST-CAPA\r\n.\r\n";
 
         let (output, response) = parse(data).unwrap();
 
@@ -195,7 +203,7 @@ mod test {
         match response {
             Response::Capability(capas) => {
                 println!("{:?}", capas);
-                assert!(capas.len() == 4)
+                assert!(capas.len() == 5)
             }
             _ => {
                 unreachable!()

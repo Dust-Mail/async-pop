@@ -1,8 +1,9 @@
 use byte_pool::BytePool;
-use bytes::{BufMut, Bytes, BytesMut};
-use futures::Stream;
+use bytes::BytesMut;
+use futures::{ready, Stream, StreamExt};
 use lazy_static::lazy_static;
-use log::{info, trace};
+use log::trace;
+use nom::Needed;
 use std::{
     pin::Pin,
     str,
@@ -10,12 +11,11 @@ use std::{
 };
 
 use crate::{
-    command::Command,
     error::{err, ErrorKind},
     request::Request,
     response::Response,
     runtime::{
-        io::{Read, ReadExt, Write, WriteExt},
+        io::{Read, Write, WriteExt},
         Instant,
     },
 };
@@ -28,26 +28,92 @@ lazy_static! {
 
 pub struct PopStream<S: Read + Write + Unpin> {
     last_activity: Option<Instant>,
+    buffer: Buffer,
+    decode_needs: usize,
     stream: S,
 }
 
-// impl<S: Read + Write + Unpin> PopStream<S> {
-//     fn decode() -> Result<Option<Response>> {}
-// }
+impl<S: Read + Write + Unpin> PopStream<S> {
+    fn decode(&mut self) -> Result<Option<Response>> {
+        if self.buffer.cursor() < self.decode_needs {
+            return Ok(None);
+        }
 
-// impl<S: Read + Write + Unpin> Stream for PopStream<S> {
-//     type Item = Response;
+        let used = self.buffer.take();
 
-//     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {}
-// }
+        match Response::from_bytes(&used[..self.buffer.cursor()]) {
+            Ok((remaining, response)) => {
+                trace!("S: {}", str::from_utf8(used.as_ref()).unwrap());
+
+                self.buffer.reset_with(remaining);
+
+                return Ok(Some(response));
+            }
+            Err(nom::Err::Incomplete(Needed::Size(min))) => {
+                self.decode_needs = self.buffer.cursor() + min.get()
+            }
+            Err(nom::Err::Incomplete(_)) => {
+                self.decode_needs = 0;
+            }
+            Err(other) => {
+                err!(
+                    ErrorKind::InvalidResponse,
+                    "The server gave an invalid response: '{}'",
+                    other
+                )
+            }
+        };
+
+        self.buffer.return_to(used);
+
+        Ok(None)
+    }
+}
+
+impl<S: Read + Write + Unpin> Stream for PopStream<S> {
+    type Item = Result<Response>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if let Some(response) = self.decode()? {
+            return Poll::Ready(Some(Ok(response)));
+        }
+
+        let this = &mut *self;
+
+        loop {
+            this.buffer.ensure_capacity(this.decode_needs)?;
+
+            let buf = this.buffer.unused();
+
+            #[cfg(feature = "runtime-async-std")]
+            let bytes_read = ready!(Pin::new(&mut this.inner).poll_read(cx, buf))?;
+
+            #[cfg(feature = "runtime-tokio")]
+            let bytes_read = {
+                let buf = &mut tokio::io::ReadBuf::new(buf);
+
+                let start = buf.filled().len();
+
+                ready!(Pin::new(&mut this.stream).poll_read(cx, buf))?;
+
+                buf.filled().len() - start
+            };
+
+            this.buffer.move_cursor(bytes_read);
+
+            if let Some(response) = this.decode()? {
+                return Poll::Ready(Some(Ok(response)));
+            }
+        }
+    }
+}
 
 impl<S: Read + Write + Unpin> PopStream<S> {
-    const CHUNK_SIZE: usize = 2048;
-    // const MAX_RESPONSE_SIZE: usize = 1024 * 1024 * 10;
-
     pub fn new(stream: S) -> PopStream<S> {
         Self {
             last_activity: None,
+            buffer: Buffer::new(),
+            decode_needs: 0,
             stream,
         }
     }
@@ -62,49 +128,11 @@ impl<S: Read + Write + Unpin> PopStream<S> {
     }
 
     pub async fn read_response(&mut self) -> Result<Response> {
-        let resp_bytes = self.read_bytes().await?;
-
-        let response = Response::from_bytes(resp_bytes)?;
-
-        match response {
-            Response::Err(err) => {
-                err!(ErrorKind::ServerError, "{}", err)
-            }
-            _ => {}
-        };
-
-        Ok(response)
-    }
-
-    async fn read_bytes(&mut self) -> Result<Bytes> {
-        let mut bytes_read;
-
-        let mut buffer = BytesMut::new();
-
-        loop {
-            let mut chunk = BYTE_POOL.alloc(Self::CHUNK_SIZE);
-
-            bytes_read = self.stream.read(&mut chunk).await?;
-
-            info!("{}", bytes_read);
-
-            if bytes_read == 0 {
-                err!(
-                    ErrorKind::ConnectionClosed,
-                    "The server closed the connection"
-                )
-            }
-
-            buffer.put_slice(&chunk[..bytes_read]);
-
-            if bytes_read < Self::CHUNK_SIZE {
-                break;
-            }
+        if let Some(resp) = self.next().await {
+            return resp;
         }
 
-        trace!("S: {}", String::from_utf8(buffer.to_vec()).unwrap());
-
-        Ok(buffer.into())
+        unreachable!()
     }
 
     /// Send some bytes to the server
@@ -124,5 +152,86 @@ impl<S: Read + Write + Unpin> PopStream<S> {
 
     pub fn last_activity(&self) -> Option<Instant> {
         self.last_activity
+    }
+}
+
+struct Buffer {
+    inner: BytesMut,
+    cursor: usize,
+}
+
+impl Buffer {
+    const CHUNK_SIZE: usize = 2048;
+    const MAX_SIZE: usize = 1024 * 1024 * 10;
+
+    fn new() -> Self {
+        Self {
+            cursor: 0,
+            inner: BytesMut::zeroed(Self::CHUNK_SIZE),
+        }
+    }
+
+    fn unused(&mut self) -> &mut [u8] {
+        &mut self.inner[self.cursor..]
+    }
+
+    fn move_cursor(&mut self, offset: usize) {
+        self.cursor += offset;
+        if self.cursor > self.inner.len() {
+            self.cursor = self.inner.len();
+        }
+    }
+
+    fn take(&mut self) -> BytesMut {
+        std::mem::replace(&mut self.inner, BytesMut::zeroed(Self::CHUNK_SIZE))
+    }
+
+    fn return_to(&mut self, inner: BytesMut) {
+        self.inner = inner
+    }
+
+    fn reset_with<B: AsRef<[u8]>>(&mut self, data: B) {
+        let data = data.as_ref();
+
+        self.cursor = data.len();
+        self.inner = BytesMut::zeroed(Self::CHUNK_SIZE);
+        self.inner[..self.cursor].copy_from_slice(data);
+    }
+
+    fn ensure_capacity(&mut self, to_ensure: usize) -> Result<()> {
+        let free_bytes: usize = self.inner.len() - self.cursor;
+
+        let extra_bytes_needed: usize = to_ensure.saturating_sub(self.inner.len());
+
+        if free_bytes == 0 || extra_bytes_needed > 0 {
+            let increase = std::cmp::max(Self::CHUNK_SIZE, extra_bytes_needed);
+
+            self.grow(increase)?;
+        }
+
+        Ok(())
+    }
+
+    fn grow(&mut self, amount: usize) -> Result<()> {
+        let min_size = self.inner.len() + amount;
+        let new_size = match min_size % Self::CHUNK_SIZE {
+            0 => min_size,
+            n => min_size + (Self::CHUNK_SIZE - n),
+        };
+
+        if new_size > Self::MAX_SIZE {
+            err!(
+                ErrorKind::ResponseTooLarge,
+                "The servers response is larger than the maximum allowed size"
+            );
+        } else {
+            self.inner.resize(new_size, 0);
+
+            Ok(())
+        }
+    }
+
+    fn cursor(&self) -> usize {
+        self.cursor
     }
 }

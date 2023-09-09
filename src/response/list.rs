@@ -1,4 +1,4 @@
-use super::stat::StatResponse;
+use super::{stat::StatResponse, types::number::Number};
 
 #[derive(Debug)]
 pub enum ListResponse {
@@ -20,43 +20,43 @@ impl From<StatResponse> for ListResponse {
 
 #[derive(Debug)]
 pub struct List {
-    message: Option<String>,
+    stats: StatResponse,
     items: Vec<ListItem>,
 }
 
 impl List {
-    pub fn new<M: Into<String>>(message: Option<M>, items: Vec<ListItem>) -> Self {
-        Self {
-            message: message.map(|msg| msg.into()),
-            items,
-        }
+    pub fn new(stats: StatResponse, items: Vec<ListItem>) -> Self {
+        Self { stats, items }
     }
 
     pub fn items(&self) -> &[ListItem] {
         self.items.as_ref()
     }
 
-    pub fn message(&self) -> Option<&String> {
-        self.message.as_ref()
+    pub fn stats(&self) -> &StatResponse {
+        &self.stats
     }
 }
 
 #[derive(Debug)]
 pub struct ListItem {
-    index: usize,
-    size: usize,
+    index: Number,
+    size: Number,
 }
 
 impl ListItem {
-    pub fn new(index: usize, size: usize) -> Self {
-        Self { index, size }
+    pub fn new<I: Into<Number>, S: Into<Number>>(index: I, size: S) -> Self {
+        Self {
+            index: index.into(),
+            size: size.into(),
+        }
     }
 
-    pub fn index(&self) -> usize {
-        self.index
+    pub fn index(&self) -> &Number {
+        &self.index
     }
 
-    pub fn size(&self) -> usize {
-        self.size
+    pub fn size(&self) -> &Number {
+        &self.size
     }
 }

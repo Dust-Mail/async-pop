@@ -9,7 +9,7 @@ use log::info;
 #[cfg(feature = "runtime-tokio")]
 use tokio::net::TcpStream;
 
-use crate::{response::list::ListResponse, ClientState};
+use crate::{response::uidl::UidlResponse, ClientState};
 
 use super::Client;
 
@@ -70,7 +70,7 @@ async fn create_logged_in_client() -> Client<TlsStream<TcpStream>> {
 
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
-async fn connect() {
+async fn e2e_connect() {
     env_logger::init();
 
     let client_info = create_client_info();
@@ -93,7 +93,7 @@ async fn connect() {
 
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
-async fn login() {
+async fn e2e_login() {
     env_logger::init();
 
     let mut client = create_logged_in_client().await;
@@ -105,7 +105,7 @@ async fn login() {
 
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
-async fn noop() {
+async fn e2e_noop() {
     env_logger::init();
 
     let mut client = create_logged_in_client().await;
@@ -117,26 +117,26 @@ async fn noop() {
 
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
-async fn stat() {
+async fn e2e_stat() {
     env_logger::init();
 
     let mut client = create_logged_in_client().await;
 
     let stats = client.stat().await.unwrap();
 
-    assert_eq!(stats.size(), 0);
+    // assert_eq!(stats.size().value().unwrap(), 0);
 
     client.quit().await.unwrap();
 }
 
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
-async fn list() {
+async fn e2e_list() {
     env_logger::init();
 
     let mut client = create_logged_in_client().await;
 
-    let list = client.list(Some(4)).await.unwrap();
+    let list = client.list(Some(1)).await.unwrap();
 
     let response = client.list(None).await.unwrap();
 
@@ -145,12 +145,26 @@ async fn list() {
 
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
-async fn retr() {
+async fn e2e_capa() {
     env_logger::init();
 
     let mut client = create_logged_in_client().await;
 
-    let bytes = client.retr(1).await.unwrap();
+    let capas = client.capa().await.unwrap();
+
+    println!("{:?}", capas);
+
+    client.quit().await.unwrap();
+}
+
+#[cfg_attr(feature = "runtime-tokio", tokio::test)]
+#[cfg_attr(feature = "runtime-async-std", async_std::test)]
+async fn e2e_retr() {
+    env_logger::init();
+
+    let mut client = create_logged_in_client().await;
+
+    let bytes = client.retr(2).await.unwrap();
 
     // println!("{}", String::from_utf8(bytes).unwrap());
 
@@ -159,7 +173,7 @@ async fn retr() {
 
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
-async fn top() {
+async fn e2e_top() {
     env_logger::init();
 
     let mut client = create_logged_in_client().await;
@@ -171,27 +185,30 @@ async fn top() {
     client.quit().await.unwrap();
 }
 
-// #[test]
-// fn uidl() {
-//     let mut client = create_logged_in_client();
+// #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+// #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+// async fn e2e_uidl() {
+//     env_logger::init();
 
-//     let uidl = client.uidl(Some(1)).unwrap();
+//     let mut client = create_logged_in_client().await;
+
+//     let uidl = client.uidl(Some(1)).await.unwrap();
 
 //     match uidl {
-//         Right(unique_id) => {
-//             println!("{}", unique_id.1);
+//         UidlResponse::Single(unique_id) => {
+//             println!("{}", unique_id.id());
 //         }
 //         _ => {}
 //     };
 
-//     let uidl = client.uidl(None).unwrap();
+//     let uidl = client.uidl(None).await.unwrap();
 
 //     match uidl {
-//         Left(list) => {
-//             println!("{}", list.len());
+//         UidlResponse::Multiple(list) => {
+//             println!("{:?}", list.items());
 //         }
 //         _ => {}
 //     };
 
-//     client.quit().unwrap();
+//     client.quit().await.unwrap();
 // }

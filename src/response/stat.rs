@@ -1,28 +1,24 @@
+use super::types::number::Number;
+
 #[derive(Debug)]
 pub struct StatResponse {
-    message_count: usize,
-    size: usize,
-}
-
-impl From<(usize, usize)> for StatResponse {
-    fn from((count, size): (usize, usize)) -> Self {
-        Self::new(count, size)
-    }
+    message_count: Number,
+    size: Number,
 }
 
 impl StatResponse {
-    pub fn new(message_count: usize, size: usize) -> Self {
+    pub fn new<C: Into<Number>, S: Into<Number>>(message_count: C, size: S) -> Self {
         Self {
-            message_count,
-            size,
+            message_count: message_count.into(),
+            size: size.into(),
         }
     }
 
-    pub fn counter(&self) -> usize {
-        self.message_count
+    pub fn counter(&self) -> &Number {
+        &self.message_count
     }
 
-    pub fn size(&self) -> usize {
-        self.size
+    pub fn size(&self) -> &Number {
+        &self.size
     }
 }
