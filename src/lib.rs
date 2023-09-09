@@ -169,16 +169,13 @@ impl<S: Read + Write + Unpin> Client<S> {
                 {
                     Ok(socket)
                 } else {
-                    Err(Error::new(
+                    err!(
                         ErrorKind::ShouldNotBeConnected,
                         "There is a connection, but our state indicates that we should not be connected",
-                    ))
+                    )
                 }
             }
-            None => Err(Error::new(
-                ErrorKind::NotConnected,
-                "Not connected to any server",
-            )),
+            None => err!(ErrorKind::NotConnected, "Not connected to any server",),
         }
     }
 
@@ -193,10 +190,10 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// Check if the client is in the correct state.
     fn check_client_state(&self, state: ClientState) -> Result<()> {
         if self.state != state {
-            Err(Error::new(
+            err!(
                 ErrorKind::IncorrectStateForCommand,
                 "The connection is not the right state to use this command",
-            ))
+            )
         } else {
             Ok(())
         }
@@ -333,10 +330,10 @@ impl<S: Read + Write + Unpin> Client<S> {
 
     fn check_deleted(&mut self, msg_number: &usize) -> Result<()> {
         if self.is_deleted(msg_number) {
-            Err(Error::new(
+            err!(
                 ErrorKind::MessageIsDeleted,
                 "This message has been marked as deleted and cannot be refenced anymore",
-            ))
+            )
         } else {
             Ok(())
         }
@@ -669,10 +666,10 @@ impl<S: Read + Write + Unpin> Client<S> {
 
     fn has_read_greeting(&self) -> Result<()> {
         if !self.read_greeting {
-            Err(Error::new(
+            err!(
                 ErrorKind::ServerFailedToGreet,
                 "Did not connect to the server correctly, as we did not get a greeting yet",
-            ))
+            )
         } else {
             Ok(())
         }

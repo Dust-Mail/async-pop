@@ -86,7 +86,7 @@ impl<S: Read + Write + Unpin> Stream for PopStream<S> {
             let buf = this.buffer.unused();
 
             #[cfg(feature = "runtime-async-std")]
-            let bytes_read = ready!(Pin::new(&mut this.inner).poll_read(cx, buf))?;
+            let bytes_read = ready!(Pin::new(&mut this.stream).poll_read(cx, buf))?;
 
             #[cfg(feature = "runtime-tokio")]
             let bytes_read = {
@@ -120,7 +120,7 @@ impl<S: Read + Write + Unpin> PopStream<S> {
 
     /// Send a command to the server and read the response into a string.
     pub async fn send_request<R: Into<Request>>(&mut self, request: R) -> Result<Response> {
-        let request = request.into();
+        let request: Request = request.into();
 
         self.send_bytes(request.to_string()).await?;
 
@@ -128,8 +128,16 @@ impl<S: Read + Write + Unpin> PopStream<S> {
     }
 
     pub async fn read_response(&mut self) -> Result<Response> {
-        if let Some(resp) = self.next().await {
-            return resp;
+        if let Some(resp_result) = self.next().await {
+            return match resp_result {
+                Ok(resp) => match resp {
+                    Response::Err(err) => {
+                        err!(ErrorKind::ServerError, "Server error: {}", err)
+                    }
+                    _ => Ok(resp),
+                },
+                Err(err) => Err(err),
+            };
         }
 
         unreachable!()
