@@ -522,10 +522,10 @@ impl<S: Read + Write + Unpin> Client<S> {
     ) -> Result<(Text, Text)> {
         self.check_client_state(ClientState::Authentication)?;
 
-        self.check_capability(vec![
-            Capability::User,
-            // Capability::Sasl(vec![String::from("PLAIN")]),
-        ])?;
+        // self.check_capability(vec![
+        //     Capability::User,
+        //     Capability::Sasl(vec![String::from("PLAIN")]),
+        // ])?;
 
         self.has_read_greeting()?;
 
