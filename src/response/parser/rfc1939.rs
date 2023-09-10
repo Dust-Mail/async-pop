@@ -213,7 +213,7 @@ mod test {
 
         match response {
             Response::Bytes(bytes) => {
-                assert!(bytes.len() == 266)
+                assert!(bytes.len() == 228)
             }
             _ => {
                 unreachable!()

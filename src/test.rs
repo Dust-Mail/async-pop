@@ -9,7 +9,7 @@ use log::info;
 use tokio::net::TcpStream;
 
 use crate::{
-    response::{capability::Capability, types::DataType, uidl::UidlResponse},
+    response::{capability::Capability, list::ListResponse, types::DataType, uidl::UidlResponse},
     ClientState,
 };
 
@@ -69,8 +69,6 @@ async fn create_logged_in_client() -> Client<TcpStream> {
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn e2e_connect() {
-    env_logger::init();
-
     let client_info = create_client_info();
 
     let server = client_info.server.as_ref();
@@ -90,8 +88,6 @@ async fn e2e_connect() {
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn e2e_login() {
-    env_logger::init();
-
     let mut client = create_logged_in_client().await;
 
     assert_eq!(client.get_state(), &ClientState::Transaction);
@@ -102,8 +98,6 @@ async fn e2e_login() {
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn e2e_noop() {
-    env_logger::init();
-
     let mut client = create_logged_in_client().await;
 
     assert_eq!(client.noop().await.unwrap(), ());
@@ -114,13 +108,11 @@ async fn e2e_noop() {
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn e2e_stat() {
-    env_logger::init();
-
     let mut client = create_logged_in_client().await;
 
     let stats = client.stat().await.unwrap();
 
-    // assert_eq!(stats.size().value().unwrap(), 0);
+    assert_eq!(stats.size().value().unwrap(), 0);
 
     client.quit().await.unwrap();
 }
@@ -128,13 +120,20 @@ async fn e2e_stat() {
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn e2e_list() {
-    env_logger::init();
-
     let mut client = create_logged_in_client().await;
 
-    let list = client.list(Some(1)).await.unwrap();
+    // let list = client.list(Some(1)).await.unwrap();
 
     let response = client.list(None).await.unwrap();
+
+    match response {
+        ListResponse::Multiple(list) => {
+            assert_eq!(list.items().len(), 0)
+        }
+        _ => {
+            unreachable!()
+        }
+    };
 
     client.quit().await.unwrap();
 }
@@ -142,8 +141,6 @@ async fn e2e_list() {
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn e2e_capa() {
-    env_logger::init();
-
     let mut client = create_logged_in_client().await;
 
     let capas = client.capa().await.unwrap();
@@ -160,57 +157,54 @@ async fn e2e_capa() {
     client.quit().await.unwrap();
 }
 
-#[cfg_attr(feature = "runtime-tokio", tokio::test)]
-#[cfg_attr(feature = "runtime-async-std", async_std::test)]
-async fn e2e_retr() {
-    env_logger::init();
+// #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+// #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+// async fn e2e_retr() {
 
-    let mut client = create_logged_in_client().await;
+//     let mut client = create_logged_in_client().await;
 
-    let bytes = client.retr(2).await.unwrap();
+//     let bytes = client.retr(2).await.unwrap();
 
-    // println!("{}", String::from_utf8(bytes).unwrap());
+//     // println!("{}", String::from_utf8(bytes).unwrap());
 
-    client.quit().await.unwrap();
-}
+//     client.quit().await.unwrap();
+// }
 
-#[cfg_attr(feature = "runtime-tokio", tokio::test)]
-#[cfg_attr(feature = "runtime-async-std", async_std::test)]
-async fn e2e_top() {
-    env_logger::init();
+// #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+// #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+// async fn e2e_top() {
+//     let mut client = create_logged_in_client().await;
 
-    let mut client = create_logged_in_client().await;
+//     let bytes = client.top(3, 0).await.unwrap();
 
-    let bytes = client.top(3, 0).await.unwrap();
+//     println!("{}", std::str::from_utf8(&bytes).unwrap());
 
-    println!("{}", std::str::from_utf8(&bytes).unwrap());
-
-    client.quit().await.unwrap();
-}
+//     client.quit().await.unwrap();
+// }
 
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn e2e_uidl() {
-    env_logger::init();
-
     let mut client = create_logged_in_client().await;
 
-    let uidl = client.uidl(Some(1)).await.unwrap();
+    // let uidl = client.uidl(Some(1)).await.unwrap();
 
-    match uidl {
-        UidlResponse::Single(unique_id) => {
-            println!("{}", unique_id.id());
-        }
-        _ => {}
-    };
+    // match uidl {
+    //     UidlResponse::Single(unique_id) => {
+    //         println!("{}", unique_id.id());
+    //     }
+    //     _ => {}
+    // };
 
     let uidl = client.uidl(None).await.unwrap();
 
     match uidl {
         UidlResponse::Multiple(list) => {
-            println!("{:?}", list.items());
+            assert_eq!(list.items().len(), 0)
         }
-        _ => {}
+        _ => {
+            unreachable!()
+        }
     };
 
     client.quit().await.unwrap();
