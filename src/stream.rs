@@ -22,7 +22,7 @@ use crate::{
 use crate::{constants::END_OF_LINE, error::Result};
 
 pub struct PopStream<S: Read + Write + Unpin> {
-    last_activity: Option<Instant>,
+    last_activity: Instant,
     buffer: Buffer,
     decode_needs: usize,
     queue: CommandQueue,
@@ -41,7 +41,7 @@ impl<S: Read + Write + Unpin> PopStream<S> {
     async fn send_bytes<B: AsRef<[u8]>>(&mut self, buf: B) -> Result<()> {
         trace!("C: {}", str::from_utf8(buf.as_ref()).unwrap());
 
-        self.last_activity = Some(Instant::now());
+        self.last_activity = Instant::now();
 
         self.stream.write_all(buf.as_ref()).await?;
 
@@ -165,7 +165,7 @@ impl<S: Read + Write + Unpin> Stream for PopStream<S> {
 impl<S: Read + Write + Unpin> PopStream<S> {
     pub fn new(stream: S) -> PopStream<S> {
         Self {
-            last_activity: None,
+            last_activity: Instant::now(),
             buffer: Buffer::new(),
             queue: CommandQueue::new(),
             decode_needs: 0,
@@ -173,7 +173,7 @@ impl<S: Read + Write + Unpin> PopStream<S> {
         }
     }
 
-    pub fn last_activity(&self) -> Option<Instant> {
+    pub fn last_activity(&self) -> Instant {
         self.last_activity
     }
 }

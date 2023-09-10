@@ -275,12 +275,9 @@ impl<S: Read + Write + Unpin> Client<S> {
     }
 
     /// When the last communication with the server happened.
-    pub fn last_activity(&mut self) -> Result<Option<Instant>> {
-        let socket = self.inner_mut()?;
-
-        let last_activity = socket.last_activity();
-
-        Ok(last_activity)
+    /// Returns [None] if there is no connection or the connection is not in the right state.
+    pub fn last_activity(&self) -> Option<Instant> {
+        Some(self.inner.as_ref()?.last_activity())
     }
 
     pub async fn top(&mut self, msg_number: usize, lines: usize) -> Result<Bytes> {
