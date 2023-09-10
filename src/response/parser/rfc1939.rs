@@ -8,7 +8,7 @@ use nom::{
     },
     combinator::{map, opt, value},
     multi::many_till,
-    sequence::{delimited, terminated, tuple},
+    sequence::{delimited, preceded, terminated, tuple},
     IResult,
 };
 
@@ -73,7 +73,7 @@ pub(crate) fn list_response<'a>(input: &'a [u8]) -> IResult<&'a [u8], Response> 
         map(message_parser, |_| None),
     ))(input)?;
 
-    let (input, (items, _end)) = many_till(stat, end_of_multiline)(input)?;
+    let (input, (items, _end)) = many_till(preceded(opt(tag(".")), stat), end_of_multiline)(input)?;
 
     let list = List::new(stats, items);
 
@@ -88,8 +88,7 @@ impl UniqueIdParser {
     }
 
     pub fn parse(input: &[u8]) -> IResult<&[u8], &[u8]> {
-        let (input, id) = take_while_m_n(1, 70, Self::is_valid_char)(input)?;
-        Ok((input, id))
+        take_while_m_n(1, 70, Self::is_valid_char)(input)
     }
 }
 
@@ -105,7 +104,7 @@ fn uidl(input: &[u8]) -> IResult<&[u8], UniqueId> {
 pub(crate) fn uidl_list_response(input: &[u8]) -> IResult<&[u8], Response> {
     let (input, message) = message_parser(input)?;
 
-    let (input, (list, _end)) = many_till(uidl, end_of_multiline)(input)?;
+    let (input, (list, _end)) = many_till(preceded(opt(tag(".")), uidl), end_of_multiline)(input)?;
 
     let list = Uidl::new(message, list);
 
