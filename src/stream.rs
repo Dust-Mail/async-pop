@@ -36,6 +36,30 @@ pub struct PopStream<S: Read + Write + Unpin> {
 }
 
 impl<S: Read + Write + Unpin> PopStream<S> {
+    /// Send a command to the server and read the response into a string.
+    pub async fn encode(&mut self, request: &Request) -> Result<()> {
+        self.send_bytes(request.to_string()).await?;
+
+        Ok(())
+    }
+
+    /// Send some bytes to the server
+    async fn send_bytes<B: AsRef<[u8]>>(&mut self, buf: B) -> Result<()> {
+        trace!("C: {}", str::from_utf8(buf.as_ref()).unwrap());
+
+        self.last_activity = Some(Instant::now());
+
+        self.stream.write_all(buf.as_ref()).await?;
+
+        self.stream.write_all(&END_OF_LINE).await?;
+
+        self.stream.flush().await?;
+
+        Ok(())
+    }
+}
+
+impl<S: Read + Write + Unpin> PopStream<S> {
     fn decode(&mut self) -> Result<Option<Response>> {
         if self.buffer.cursor() < self.decode_needs {
             return Ok(None);
@@ -86,6 +110,24 @@ impl<S: Read + Write + Unpin> PopStream<S> {
 
         Ok(None)
     }
+
+    pub async fn read_response<C: Into<Command>>(&mut self, command: C) -> Result<Response> {
+        self.queue.add(command);
+
+        if let Some(resp_result) = self.next().await {
+            return match resp_result {
+                Ok(resp) => match resp {
+                    Response::Err(err) => {
+                        err!(ErrorKind::ServerError(err.to_string()), "Server error")
+                    }
+                    _ => Ok(resp),
+                },
+                Err(err) => Err(err),
+            };
+        }
+
+        unreachable!()
+    }
 }
 
 impl<S: Read + Write + Unpin> Stream for PopStream<S> {
@@ -135,48 +177,6 @@ impl<S: Read + Write + Unpin> PopStream<S> {
             decode_needs: 0,
             stream,
         }
-    }
-
-    /// Send a command to the server and read the response into a string.
-    pub async fn send_request<R: Into<Request>>(&mut self, request: R) -> Result<Response> {
-        let request: Request = request.into();
-
-        self.send_bytes(request.to_string()).await?;
-
-        self.read_response(request).await
-    }
-
-    pub async fn read_response<C: Into<Command>>(&mut self, command: C) -> Result<Response> {
-        self.queue.add(command);
-
-        if let Some(resp_result) = self.next().await {
-            return match resp_result {
-                Ok(resp) => match resp {
-                    Response::Err(err) => {
-                        err!(ErrorKind::ServerError(err.to_string()), "Server error")
-                    }
-                    _ => Ok(resp),
-                },
-                Err(err) => Err(err),
-            };
-        }
-
-        unreachable!()
-    }
-
-    /// Send some bytes to the server
-    async fn send_bytes<B: AsRef<[u8]>>(&mut self, buf: B) -> Result<()> {
-        trace!("C: {}", str::from_utf8(buf.as_ref()).unwrap());
-
-        self.last_activity = Some(Instant::now());
-
-        self.stream.write_all(buf.as_ref()).await?;
-
-        self.stream.write_all(&END_OF_LINE).await?;
-
-        self.stream.flush().await?;
-
-        Ok(())
     }
 
     pub fn last_activity(&self) -> Option<Instant> {

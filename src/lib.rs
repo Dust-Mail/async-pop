@@ -44,7 +44,7 @@ mod command;
 mod constants;
 pub mod error;
 mod macros;
-mod request;
+pub mod request;
 pub mod response;
 mod runtime;
 mod stream;
@@ -224,9 +224,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// ```
     /// https://www.rfc-editor.org/rfc/rfc1939#page-9
     pub async fn noop(&mut self) -> Result<()> {
-        let socket = self.inner_mut()?;
-
-        socket.send_request(Noop).await?;
+        self.send_request(Noop).await?;
 
         Ok(())
     }
@@ -257,15 +255,13 @@ impl<S: Read + Write + Unpin> Client<S> {
             None => {}
         };
 
-        let socket = self.inner_mut()?;
-
         let mut request: Request = Uidl.into();
 
         if let Some(number) = msg_number {
             request.add_arg(number)
         }
 
-        let response = socket.send_request(request).await?;
+        let response = self.send_request(request).await?;
 
         match response {
             Response::Uidl(resp) => Ok(resp),
@@ -292,14 +288,12 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         self.check_capability(vec![Capability::Top])?;
 
-        let socket = self.inner_mut()?;
-
         let mut request: Request = Top.into();
 
         request.add_arg(msg_number);
         request.add_arg(lines);
 
-        let response = socket.send_request(request).await?;
+        let response = self.send_request(request).await?;
 
         match response {
             Response::Bytes(resp) => Ok(resp),
@@ -358,13 +352,11 @@ impl<S: Read + Write + Unpin> Client<S> {
     pub async fn dele(&mut self, msg_number: usize) -> Result<Text> {
         self.check_deleted(&msg_number)?;
 
-        let socket = self.inner_mut()?;
-
         let mut request: Request = Dele.into();
 
         request.add_arg(msg_number);
 
-        let response = socket.send_request(request).await?;
+        let response = self.send_request(request).await?;
 
         match response {
             Response::Message(resp) => Ok(resp),
@@ -389,9 +381,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// ```
     /// https://www.rfc-editor.org/rfc/rfc1939#page-9
     pub async fn rset(&mut self) -> Result<Text> {
-        let socket = self.inner_mut()?;
-
-        let response = socket.send_request(Rset).await?;
+        let response = self.send_request(Rset).await?;
 
         match response {
             Response::Message(resp) => Ok(resp),
@@ -432,9 +422,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         request.add_arg(msg_number);
 
-        let socket = self.inner_mut()?;
-
-        let response = socket.send_request(request).await?;
+        let response = self.send_request(request).await?;
 
         match response {
             Response::Bytes(resp) => Ok(resp),
@@ -456,9 +444,7 @@ impl<S: Read + Write + Unpin> Client<S> {
             request.add_arg(msg_number)
         }
 
-        let socket = self.inner_mut()?;
-
-        let response = socket.send_request(request).await?;
+        let response = self.send_request(request).await?;
 
         match response {
             Response::List(list) => Ok(list.into()),
@@ -471,9 +457,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     }
 
     pub async fn stat(&mut self) -> Result<Stat> {
-        let socket = self.inner_mut()?;
-
-        let response = socket.send_request(Stat).await?;
+        let response = self.send_request(Stat).await?;
 
         match response.into() {
             Response::Stat(resp) => Ok(resp),
@@ -489,14 +473,12 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         self.has_read_greeting()?;
 
-        let socket = self.inner_mut()?;
-
         let mut request: Request = Apop.into();
 
         request.add_arg(name.as_ref());
         request.add_arg(digest.as_ref());
 
-        let response = socket.send_request(request).await?;
+        let response = self.send_request(request).await?;
 
         self.state = ClientState::Transaction;
 
@@ -516,13 +498,11 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         self.has_read_greeting()?;
 
-        let socket = self.inner_mut()?;
-
         let mut request: Request = Auth.into();
 
         request.add_arg(token.as_ref());
 
-        let response = socket.send_request(request).await?;
+        let response = self.send_request(request).await?;
 
         self.state = ClientState::Transaction;
 
@@ -549,19 +529,17 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         self.has_read_greeting()?;
 
-        let socket = self.inner_mut()?;
-
         let mut request: Request = User.into();
 
         request.add_arg(user.as_ref());
 
-        let user_response = socket.send_request(request).await?;
+        let user_response = self.send_request(request).await?;
 
         let mut request: Request = Pass.into();
 
         request.add_arg(password.as_ref());
 
-        let pass_response = socket.send_request(request).await?;
+        let pass_response = self.send_request(request).await?;
 
         self.capabilities = self.capa().await?;
 
@@ -598,13 +576,12 @@ impl<S: Read + Write + Unpin> Client<S> {
     ///
     /// https://www.rfc-editor.org/rfc/rfc1939#page-5
     pub async fn quit(&mut self) -> Result<Text> {
-        let socket = self.inner_mut()?;
-
-        let response = socket.send_request(Quit).await?;
+        let response = self.send_request(Quit).await?;
 
         self.state = ClientState::Update;
         self.inner = None;
         self.state = ClientState::None;
+        self.read_greeting = false;
 
         self.marked_as_del.clear();
         self.capabilities.clear();
@@ -647,9 +624,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
     /// Fetches a list of capabilities for the currently connected server and returns it.
     pub async fn capa(&mut self) -> Result<Capabilities> {
-        let stream = self.inner_mut()?;
-
-        let response = stream.send_request(Capa).await?;
+        let response = self.send_request(Capa).await?;
 
         match response.into() {
             Response::Capability(resp) => Ok(resp),
@@ -658,6 +633,19 @@ impl<S: Read + Write + Unpin> Client<S> {
                 "Did not received the expected capa response"
             ),
         }
+    }
+
+    /// Sends a valid Pop3 command and returns the response sent by the server.
+    pub async fn send_request<R: Into<Request>>(&mut self, request: R) -> Result<Response> {
+        let request = request.into();
+
+        let stream = self.inner_mut()?;
+
+        stream.encode(&request).await?;
+
+        let response = stream.read_response(request).await?;
+
+        Ok(response)
     }
 
     fn has_read_greeting(&self) -> Result<()> {
@@ -678,7 +666,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         let response = socket.read_response(Greet).await?;
 
-        match response.into() {
+        match response {
             Response::Message(resp) => {
                 self.greeting = Some(resp.clone());
                 self.read_greeting = true;
@@ -694,10 +682,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
     /// The greeting that the POP server sent when the connection opened.
     pub fn greeting(&self) -> Option<&Text> {
-        match self.greeting.as_ref() {
-            Some(greeting) => Some(greeting),
-            None => None,
-        }
+        self.greeting.as_ref()
     }
 }
 
