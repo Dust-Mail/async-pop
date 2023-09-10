@@ -153,7 +153,7 @@ impl<S: Read + Write + Unpin> PopStream<S> {
             return match resp_result {
                 Ok(resp) => match resp {
                     Response::Err(err) => {
-                        err!(ErrorKind::ServerError, "Server error: {}", err)
+                        err!(ErrorKind::ServerError(err.to_string()), "Server error")
                     }
                     _ => Ok(resp),
                 },
@@ -213,7 +213,7 @@ struct Buffer {
 
 impl Buffer {
     const CHUNK_SIZE: usize = 2048;
-    const MAX_SIZE: usize = 1024 * 1024 * 10;
+    const MAX_SIZE: usize = Self::CHUNK_SIZE * 1024 * 10;
 
     fn new() -> Self {
         Self {
