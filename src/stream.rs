@@ -1,7 +1,5 @@
-use byte_pool::BytePool;
 use bytes::BytesMut;
 use futures::{ready, Stream, StreamExt};
-use lazy_static::lazy_static;
 use log::trace;
 use nom::Needed;
 use std::{
@@ -22,10 +20,6 @@ use crate::{
 };
 
 use crate::{constants::END_OF_LINE, error::Result};
-
-lazy_static! {
-    static ref BYTE_POOL: BytePool<Vec<u8>> = BytePool::new();
-}
 
 pub struct PopStream<S: Read + Write + Unpin> {
     last_activity: Option<Instant>,
