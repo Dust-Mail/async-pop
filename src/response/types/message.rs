@@ -10,12 +10,18 @@ use crate::error::{Error, Result};
 
 use super::DataType;
 
-#[derive(Debug, Clone)]
+#[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Clone)]
 /// Represents a Pop3 string data type.
 ///
 /// Get its real value by calling `value()` from the [DataType] trait
 pub struct Text {
     inner: Bytes,
+}
+
+impl From<&str> for Text {
+    fn from(value: &str) -> Self {
+        Self::from(value.as_bytes())
+    }
 }
 
 impl Display for Text {

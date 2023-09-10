@@ -80,7 +80,7 @@ fn implementation(input: &[u8]) -> IResult<&[u8], Capability> {
 
     let message = message.unwrap_or(b"");
 
-    let capa = Capability::Implementation(Bytes::copy_from_slice(message));
+    let capa = Capability::Implementation(message.into());
 
     Ok((input, capa))
 }
@@ -90,7 +90,9 @@ fn unknown_capability(input: &[u8]) -> IResult<&[u8], Capability> {
 
     terminated(
         map(name, |other: Vec<char>| {
-            Capability::Other(other.into_iter().map(|byte| byte as u8).collect())
+            let bytes: Bytes = other.into_iter().map(|byte| byte as u8).collect();
+
+            Capability::Other(bytes.into())
         }),
         eol,
     )(input)
@@ -128,7 +130,7 @@ fn capability(input: &[u8]) -> IResult<&[u8], Capability> {
 }
 
 pub(crate) fn capability_response(input: &[u8]) -> IResult<&[u8], Response> {
-    let (input, _message) = terminated(tag_no_case("Capability list follows"), eol)(input)?;
+    let (input, _message) = message_parser(input)?;
 
     let (input, (capabilities, _end)) = many_till(capability, end_of_multiline)(input)?;
 

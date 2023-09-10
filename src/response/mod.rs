@@ -8,6 +8,8 @@ pub mod uidl;
 use bytes::Bytes;
 use nom::IResult;
 
+use crate::command::Command;
+
 use self::{
     capability::Capability, list::List, stat::Stat, types::message::Text, uidl::UidlResponse,
 };
@@ -39,7 +41,7 @@ pub enum Response {
 }
 
 impl Response {
-    pub fn from_bytes(input: &[u8]) -> IResult<&[u8], Self> {
-        parser::parse(input)
+    pub fn from_bytes<'a>(input: &'a [u8], command: &Command) -> IResult<&'a [u8], Self> {
+        parser::parse(input, command)
     }
 }

@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use nom::{
     branch::alt,
-    bytes::streaming::{tag, tag_no_case, take_until, take_while, take_while_m_n},
+    bytes::streaming::{tag, take_until, take_while, take_while_m_n},
     character::{
         is_alphanumeric,
         streaming::{char, digit1, not_line_ending, space0, space1},
@@ -70,7 +70,7 @@ fn list_stats(input: &[u8]) -> IResult<&[u8], Stat> {
 pub(crate) fn list_response<'a>(input: &'a [u8]) -> IResult<&'a [u8], Response> {
     let (input, stats) = alt((
         map(list_stats, |stats| Some(stats)),
-        map(tag_no_case("scan listing follows"), |_| None),
+        map(message_parser, |_| None),
     ))(input)?;
 
     let (input, (items, _end)) = many_till(stat, end_of_multiline)(input)?;
@@ -103,7 +103,7 @@ fn uidl(input: &[u8]) -> IResult<&[u8], UniqueId> {
 }
 
 pub(crate) fn uidl_list_response(input: &[u8]) -> IResult<&[u8], Response> {
-    let (input, message) = terminated(tag_no_case("unique-id listing follows"), eol)(input)?;
+    let (input, message) = message_parser(input)?;
 
     let (input, (list, _end)) = many_till(uidl, end_of_multiline)(input)?;
 
@@ -118,19 +118,9 @@ pub(crate) fn uidl_response(input: &[u8]) -> IResult<&[u8], Response> {
     Ok((input, Response::Uidl(unique_id.into())))
 }
 
-pub(crate) fn retr_response(input: &[u8]) -> IResult<&[u8], Response> {
-    let (input, _message) = terminated(tag_no_case("message follows"), eol)(input)?;
+pub(crate) fn rfc822_response(input: &[u8]) -> IResult<&[u8], Response> {
+    let (input, _message) = message_parser(input)?;
 
-    rfc822_response(input)
-}
-
-pub(crate) fn top_response(input: &[u8]) -> IResult<&[u8], Response> {
-    let (input, _message) = terminated(tag_no_case("top of message follows"), eol)(input)?;
-
-    rfc822_response(input)
-}
-
-fn rfc822_response(input: &[u8]) -> IResult<&[u8], Response> {
     let (input, content) = take_until("\r\n.\r\n")(input)?;
 
     let (input, _) = eol(input)?;

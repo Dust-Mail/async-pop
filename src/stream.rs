@@ -11,6 +11,7 @@ use std::{
 };
 
 use crate::{
+    command::Command,
     error::{err, ErrorKind},
     request::Request,
     response::Response,
@@ -30,6 +31,7 @@ pub struct PopStream<S: Read + Write + Unpin> {
     last_activity: Option<Instant>,
     buffer: Buffer,
     decode_needs: usize,
+    queue: CommandQueue,
     stream: S,
 }
 
@@ -41,28 +43,44 @@ impl<S: Read + Write + Unpin> PopStream<S> {
 
         let used = self.buffer.take();
 
-        match Response::from_bytes(&used[..self.buffer.cursor()]) {
-            Ok((remaining, response)) => {
-                trace!("S: {}", str::from_utf8(used.as_ref()).unwrap());
+        let current_command = self.queue.current();
 
-                self.buffer.reset_with(remaining);
+        match current_command {
+            Some(command) => {
+                match Response::from_bytes(&used[..self.buffer.cursor()], command) {
+                    Ok((remaining, response)) => {
+                        trace!("S: {}", str::from_utf8(used.as_ref()).unwrap());
 
-                return Ok(Some(response));
+                        self.queue.mark_current_as_done();
+
+                        self.buffer.reset_with(remaining);
+
+                        return Ok(Some(response));
+                    }
+                    Err(nom::Err::Incomplete(Needed::Size(min))) => {
+                        self.decode_needs = self.buffer.cursor() + min.get()
+                    }
+                    Err(nom::Err::Incomplete(_)) => {
+                        self.decode_needs = 0;
+                    }
+                    Err(other) => {
+                        err!(
+                            ErrorKind::InvalidResponse,
+                            "The server gave an invalid response: '{}'",
+                            other
+                        )
+                    }
+                };
             }
-            Err(nom::Err::Incomplete(Needed::Size(min))) => {
-                self.decode_needs = self.buffer.cursor() + min.get()
-            }
-            Err(nom::Err::Incomplete(_)) => {
-                self.decode_needs = 0;
-            }
-            Err(other) => {
+            None => {
+                self.buffer.return_to(used);
+
                 err!(
-                    ErrorKind::InvalidResponse,
-                    "The server gave an invalid response: '{}'",
-                    other
-                )
+                    ErrorKind::MissingRequest,
+                    "Trying to read a response without having sent a request"
+                );
             }
-        };
+        }
 
         self.buffer.return_to(used);
 
@@ -113,6 +131,7 @@ impl<S: Read + Write + Unpin> PopStream<S> {
         Self {
             last_activity: None,
             buffer: Buffer::new(),
+            queue: CommandQueue::new(),
             decode_needs: 0,
             stream,
         }
@@ -124,10 +143,12 @@ impl<S: Read + Write + Unpin> PopStream<S> {
 
         self.send_bytes(request.to_string()).await?;
 
-        self.read_response().await
+        self.read_response(request).await
     }
 
-    pub async fn read_response(&mut self) -> Result<Response> {
+    pub async fn read_response<C: Into<Command>>(&mut self, command: C) -> Result<Response> {
+        self.queue.add(command);
+
         if let Some(resp_result) = self.next().await {
             return match resp_result {
                 Ok(resp) => match resp {
@@ -160,6 +181,28 @@ impl<S: Read + Write + Unpin> PopStream<S> {
 
     pub fn last_activity(&self) -> Option<Instant> {
         self.last_activity
+    }
+}
+
+struct CommandQueue {
+    list: Vec<Command>,
+}
+
+impl CommandQueue {
+    fn new() -> Self {
+        Self { list: Vec::new() }
+    }
+
+    fn add<C: Into<Command>>(&mut self, command: C) {
+        self.list.push(command.into())
+    }
+
+    fn current(&self) -> Option<&Command> {
+        self.list.first()
+    }
+
+    fn mark_current_as_done(&mut self) {
+        self.list.remove(0);
     }
 }
 

@@ -20,14 +20,14 @@ impl From<UniqueId> for UidlResponse {
 
 #[derive(Debug)]
 pub struct Uidl {
-    message: Text,
+    message: Option<Text>,
     items: Vec<UniqueId>,
 }
 
 impl Uidl {
-    pub fn new<M: Into<Text>>(message: M, items: Vec<UniqueId>) -> Self {
+    pub fn new<M: Into<Text>>(message: Option<M>, items: Vec<UniqueId>) -> Self {
         Self {
-            message: message.into(),
+            message: message.map(|msg| msg.into()),
             items,
         }
     }
@@ -36,8 +36,8 @@ impl Uidl {
         self.items.as_ref()
     }
 
-    pub fn message(&self) -> &Text {
-        &self.message
+    pub fn message(&self) -> Option<&Text> {
+        self.message.as_ref()
     }
 }
 

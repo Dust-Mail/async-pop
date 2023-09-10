@@ -1,6 +1,6 @@
 use bytes::Bytes;
 
-use super::types::number::Duration;
+use super::types::{message::Text, number::Duration};
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Clone)]
 pub enum Expiration {
@@ -33,9 +33,9 @@ pub enum Capability {
     /// Whether the UIDL command is supported.
     Uidl,
     /// The type of authentication method the server prefers/uses.
-    Implementation(Bytes),
+    Implementation(Text),
     Stls,
-    Other(Bytes),
+    Other(Text),
 }
 
 pub type Capabilities = Vec<Capability>;

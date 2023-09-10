@@ -1,6 +1,5 @@
 use std::env;
 
-use async_native_tls::TlsConnector;
 // use async_native_tls::{TlsConnector, TlsStream};
 #[cfg(feature = "runtime-async-std")]
 use async_std::net::TcpStream;
@@ -10,7 +9,7 @@ use log::info;
 use tokio::net::TcpStream;
 
 use crate::{
-    response::{capability::Capability, types::DataType},
+    response::{capability::Capability, types::DataType, uidl::UidlResponse},
     ClientState,
 };
 
@@ -60,9 +59,7 @@ async fn create_logged_in_client() -> Client<TcpStream> {
 
 //     let tls = TlsConnector::new();
 
-//     let mut client = super::connect((server, port), server, &tls, None)
-//         .await
-//         .unwrap();
+//     let mut client = super::connect((server, port), server, &tls).await.unwrap();
 
 //     client.login(username, password).await.unwrap();
 
@@ -186,35 +183,35 @@ async fn e2e_top() {
 
     let bytes = client.top(3, 0).await.unwrap();
 
-    // println!("{}", String::from_utf8(bytes).unwrap());
+    println!("{}", std::str::from_utf8(&bytes).unwrap());
 
     client.quit().await.unwrap();
 }
 
-// #[cfg_attr(feature = "runtime-tokio", tokio::test)]
-// #[cfg_attr(feature = "runtime-async-std", async_std::test)]
-// async fn e2e_uidl() {
-//     env_logger::init();
+#[cfg_attr(feature = "runtime-tokio", tokio::test)]
+#[cfg_attr(feature = "runtime-async-std", async_std::test)]
+async fn e2e_uidl() {
+    env_logger::init();
 
-//     let mut client = create_logged_in_client().await;
+    let mut client = create_logged_in_client().await;
 
-//     let uidl = client.uidl(Some(1)).await.unwrap();
+    let uidl = client.uidl(Some(1)).await.unwrap();
 
-//     match uidl {
-//         UidlResponse::Single(unique_id) => {
-//             println!("{}", unique_id.id());
-//         }
-//         _ => {}
-//     };
+    match uidl {
+        UidlResponse::Single(unique_id) => {
+            println!("{}", unique_id.id());
+        }
+        _ => {}
+    };
 
-//     let uidl = client.uidl(None).await.unwrap();
+    let uidl = client.uidl(None).await.unwrap();
 
-//     match uidl {
-//         UidlResponse::Multiple(list) => {
-//             println!("{:?}", list.items());
-//         }
-//         _ => {}
-//     };
+    match uidl {
+        UidlResponse::Multiple(list) => {
+            println!("{:?}", list.items());
+        }
+        _ => {}
+    };
 
-//     client.quit().await.unwrap();
-// }
+    client.quit().await.unwrap();
+}

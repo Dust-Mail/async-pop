@@ -33,6 +33,7 @@ pub enum ErrorKind {
     ServerFailedToGreet,
     InvalidResponse,
     ResponseTooLarge,
+    MissingRequest,
     ServerError,
     ParseCommand,
     UnexpectedResponse,

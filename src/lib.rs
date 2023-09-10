@@ -54,7 +54,7 @@ use std::collections::HashSet;
 use async_native_tls::{TlsConnector, TlsStream};
 use bytes::Bytes;
 use command::Command::*;
-use error::{Error, ErrorKind, Result};
+use error::{ErrorKind, Result};
 use request::Request;
 use response::{
     capability::{Capabilities, Capability},
@@ -676,7 +676,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         let socket = self.inner_mut()?;
 
-        let response = socket.read_response().await?;
+        let response = socket.read_response(Greet).await?;
 
         match response.into() {
             Response::Message(resp) => {
