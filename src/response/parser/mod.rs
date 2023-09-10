@@ -16,18 +16,8 @@ use self::{
 
 use super::Response;
 
-fn is_empty<B: AsRef<[u8]>>(slice: B) -> bool {
-    for byte in slice.as_ref() {
-        if byte != &0 {
-            return false;
-        }
-    }
-
-    true
-}
-
 pub(crate) fn parse<'a>(input: &'a [u8], request: &Command) -> IResult<&'a [u8], Response> {
-    if is_empty(input) {
+    if input.is_empty() {
         return Err(nom::Err::Incomplete(nom::Needed::Unknown));
     }
 
