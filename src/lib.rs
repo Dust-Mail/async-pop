@@ -107,7 +107,7 @@ async fn create_client_from_socket<S: Read + Write + Unpin>(
 
     client.greeting = Some(client.read_greeting().await?);
 
-    client.capabilities = client.capa().await?;
+    client.update_capabilities().await;
 
     Ok(client)
 }
@@ -275,6 +275,7 @@ impl<S: Read + Write + Unpin> Client<S> {
     }
 
     /// When the last communication with the server happened.
+    ///
     /// Returns [None] if there is no connection or the connection is not in the right state.
     pub fn last_activity(&self) -> Option<Instant> {
         Some(self.inner.as_ref()?.last_activity())
@@ -372,13 +373,12 @@ impl<S: Read + Write + Unpin> Client<S> {
     /// - May only be given in the TRANSACTION state
     /// ### Possible Responses:
     /// - +OK
-    /// # Examples:
-    /// ```rust,ignore
-    /// client.rset().unwrap();
-    /// ```
+    ///
     /// https://www.rfc-editor.org/rfc/rfc1939#page-9
     pub async fn rset(&mut self) -> Result<Text> {
         let response = self.send_request(Rset).await?;
+
+        self.marked_as_del = Vec::new();
 
         match response {
             Response::Message(resp) => Ok(resp),
@@ -430,14 +430,24 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
+    /// ## LIST
+    ///
+    /// If an argument was given and the POP3 server issues a positive response with a line containing information for that message.  This line is called a "scan listing" for that message.
+    ///
+    /// If no argument was given and the POP3 server issues a positive response, then the response given is multi-line. After the initial +OK, for each message in the maildrop, the POP3 server responds with a line containing information for that message. This line is also called a "scan listing" for that message.  If there are no messages in the maildrop, then the POP3 server responds with no scan listings--it issues a positive response followed by a line containing a termination octet and a CRLF pair.
+    ///
+    /// ### Arguments:
+    /// - a message-number (optional), which, if present, may NOT refer to a message marked as deleted
+    /// ### Restrictions:
+    /// - may only be given in the TRANSACTION state
+    /// ### Possible responses:
+    /// - +OK scan listing follows
+    /// - -ERR no such message
     pub async fn list(&mut self, msg_number: Option<usize>) -> Result<ListResponse> {
-        if let Some(msg_number) = msg_number.as_ref() {
-            self.check_deleted(msg_number)?;
-        }
-
         let mut request: Request = List.into();
 
         if let Some(msg_number) = msg_number {
+            self.check_deleted(&msg_number)?;
             request.add_arg(msg_number)
         }
 
@@ -453,6 +463,13 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
+    /// ## STAT
+    /// The POP3 server issues a positive response with a line containing information for the maildrop. This line is called a "drop listing" for that maildrop.
+    /// ### Arguments: none
+    /// ### Restrictions:
+    /// - may only be given in the TRANSACTION state
+    /// ### Possible responses:
+    /// - +OK nn mm
     pub async fn stat(&mut self) -> Result<Stat> {
         let response = self.send_request(Stat).await?;
 
@@ -465,6 +482,28 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
+    /// ## APOP
+    /// Normally, each POP3 session starts with a USER/PASS exchange.  This results in a server/user-id specific password being sent in the clear on the network.  For intermittent use of POP3, this may not introduce a sizable risk.  However, many POP3 client implementations connect to the POP3 server on a regular basis -- to check for new mail.  Further the interval of session initiation may be on the order of five minutes.  Hence, the risk of password capture is greatly enhanced.
+    ///
+    /// An alternate method of authentication is required which provides for both origin authentication and replay protection, but which does not involve sending a password in the clear over the network.  The APOP command provides this functionality.
+    ///
+    /// A POP3 server which implements the APOP command will include a timestamp in its banner greeting.  The syntax of the timestamp corresponds to the `msg-id' in [RFC822], and MUST be different each time the POP3 server issues a banner greeting.  For example, on a UNIX implementation in which a separate UNIX process is used for each instance of a POP3 server, the syntax of the timestamp might be:
+    ///
+    /// `<process-ID.clock@hostname>`
+    ///
+    /// where `process-ID' is the decimal value of the process's PID, clock is the decimal value of the system clock, and hostname is the fully-qualified domain-name corresponding to the host where the POP3 server is running.
+    ///
+    /// The POP3 client makes note of this timestamp, and then issues the APOP command.  The `name` parameter has identical semantics to the `name` parameter of the USER command. The `digest` parameter is calculated by applying the MD5 algorithm [RFC1321] to a string consisting of the timestamp (including angle-brackets) followed by a shared
+    ///
+    /// ### Arguments:
+    /// a string identifying a mailbox and a MD5 digest string (both required)
+    ///
+    /// ### Restrictions:
+    /// may only be given in the AUTHORIZATION state after the POP3 greeting or after an unsuccessful USER or PASS command
+    ///
+    /// ### Possible responses:
+    /// - +OK maildrop locked and ready
+    /// - -ERR permission denied
     pub async fn apop<N: AsRef<str>, D: AsRef<str>>(&mut self, name: N, digest: D) -> Result<Text> {
         self.check_client_state(ClientState::Authentication)?;
 
@@ -477,6 +516,8 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         let response = self.send_request(request).await?;
 
+        self.update_capabilities().await;
+
         self.state = ClientState::Transaction;
 
         match response {
@@ -488,30 +529,54 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
-    pub async fn auth<U: AsRef<str>>(&mut self, token: U) -> Result<Text> {
-        self.check_client_state(ClientState::Authentication)?;
+    // pub async fn auth<A: AsRef<str>, U: AsRef<str>>(
+    //     &mut self,
+    //     auth_type: A,
+    //     token: U,
+    // ) -> Result<Text> {
+    //     self.check_client_state(ClientState::Authentication)?;
 
-        self.check_capability(vec![Capability::Sasl(vec!["XOAUTH2".into()])])?;
+    //     self.has_read_greeting()?;
 
-        self.has_read_greeting()?;
+    //     let mut request: Request = Auth.into();
 
-        let mut request: Request = Auth.into();
+    //     request.add_arg(auth_type.as_ref());
 
-        request.add_arg(token.as_ref());
+    //     let response = self.send_request(request).await?;
 
-        let response = self.send_request(request).await?;
+    //     self.state = ClientState::Transaction;
 
-        self.state = ClientState::Transaction;
+    //     match response {
+    //         Response::Message(resp) => Ok(resp),
+    //         _ => err!(
+    //             ErrorKind::UnexpectedResponse,
+    //             "Did not received the expected auth response"
+    //         ),
+    //     }
+    // }
 
-        match response {
-            Response::Message(resp) => Ok(resp),
-            _ => err!(
-                ErrorKind::UnexpectedResponse,
-                "Did not received the expected auth response"
-            ),
-        }
-    }
-
+    /// ## USER & PASS
+    ///
+    /// To authenticate using the USER and PASS command combination, the client must first issue the USER command. If the POP3 server responds with a positive status indicator ("+OK"), then the client may issue either the PASS command to complete the authentication, or the QUIT command to terminate the POP3 session.  If the POP3 server responds with a negative status indicator ("-ERR") to the USER command, then the client may either issue a new authentication command or may issue the QUIT command.
+    ///
+    /// The server may return a positive response even though no such mailbox exists. The server may return a negative response if mailbox exists, but does not permit plaintext password authentication.
+    ///
+    /// When the client issues the PASS command, the POP3 server uses the argument pair from the USER and PASS commands to determine if the client should be given access to the appropriate maildrop.
+    ///
+    /// Since the PASS command has exactly one argument, a POP3 server may treat spaces in the argument as part of the password, instead of as argument separators.
+    ///
+    /// ### Arguments:
+    /// -  a string identifying a mailbox (required), which is of significance ONLY to the server
+    /// -  a server/mailbox-specific password (required)
+    ///
+    /// ### Restrictions:
+    /// may only be given in the AUTHORIZATION state after the POP3 greeting or after an unsuccessful USER or PASS command
+    ///
+    /// ### Possible responses:
+    /// - +OK maildrop locked and ready
+    /// - -ERR invalid password
+    /// - -ERR unable to lock maildrop
+    /// - -ERR never heard of mailbox name
     pub async fn login<U: AsRef<str>, P: AsRef<str>>(
         &mut self,
         user: U,
@@ -538,7 +603,7 @@ impl<S: Read + Write + Unpin> Client<S> {
 
         let pass_response = self.send_request(request).await?;
 
-        self.capabilities = self.capa().await?;
+        self.update_capabilities().await;
 
         self.state = ClientState::Transaction;
 
@@ -629,6 +694,12 @@ impl<S: Read + Write + Unpin> Client<S> {
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected capa response"
             ),
+        }
+    }
+
+    async fn update_capabilities(&mut self) {
+        if let Ok(capabilities) = self.capa().await {
+            self.capabilities = capabilities
         }
     }
 

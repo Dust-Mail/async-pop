@@ -10,3 +10,11 @@ macro_rules! collection {
 }
 
 pub(crate) use collection;
+
+macro_rules! escape_newlines {
+    ($input:expr) => {
+        $input.replace("\n", "\\n").replace("\r", "\\r")
+    };
+}
+
+pub(crate) use escape_newlines;

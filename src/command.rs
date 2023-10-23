@@ -22,14 +22,22 @@ pub enum Command {
     Quit,
     Capa,
     Greet,
+    Other(String),
 }
 
 impl Display for Command {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (key, value) in Self::definitions().into_iter() {
-            if &value == self {
-                write!(f, "{}", key.to_ascii_uppercase())?;
-                return Ok(());
+        match self {
+            Self::Other(other) => {
+                write!(f, "{}", other)?;
+            }
+            _ => {
+                for (key, value) in Self::definitions().into_iter() {
+                    if &value == self {
+                        write!(f, "{}", key.to_ascii_uppercase())?;
+                        return Ok(());
+                    }
+                }
             }
         }
 

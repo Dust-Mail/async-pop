@@ -11,6 +11,7 @@ use std::{
 use crate::{
     command::Command,
     error::{err, ErrorKind},
+    macros::escape_newlines,
     request::Request,
     response::Response,
     runtime::{
@@ -39,7 +40,10 @@ impl<S: Read + Write + Unpin> PopStream<S> {
 
     /// Send some bytes to the server
     async fn send_bytes<B: AsRef<[u8]>>(&mut self, buf: B) -> Result<()> {
-        trace!("C: {}", str::from_utf8(buf.as_ref()).unwrap());
+        trace!(
+            "C: {}",
+            escape_newlines!(str::from_utf8(buf.as_ref()).unwrap())
+        );
 
         self.last_activity = Instant::now();
 
@@ -67,7 +71,10 @@ impl<S: Read + Write + Unpin> PopStream<S> {
             Some(command) => {
                 match Response::from_bytes(&used[..self.buffer.cursor()], command) {
                     Ok((remaining, response)) => {
-                        trace!("S: {}", str::from_utf8(used.as_ref()).unwrap());
+                        trace!(
+                            "S: {}",
+                            escape_newlines!(str::from_utf8(used.as_ref()).unwrap())
+                        );
 
                         self.queue.mark_current_as_done();
 
