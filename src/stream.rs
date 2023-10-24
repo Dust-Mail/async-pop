@@ -39,7 +39,7 @@ impl<S: Read + Write + Unpin> PopStream<S> {
     }
 
     /// Send some bytes to the server
-    async fn send_bytes<B: AsRef<[u8]>>(&mut self, buf: B) -> Result<()> {
+    pub async fn send_bytes<B: AsRef<[u8]>>(&mut self, buf: B) -> Result<()> {
         trace!(
             "C: {}",
             escape_newlines!(str::from_utf8(buf.as_ref()).unwrap())

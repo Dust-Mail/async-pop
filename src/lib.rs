@@ -49,6 +49,11 @@ pub mod response;
 mod runtime;
 mod stream;
 
+#[cfg(feature = "sasl")]
+mod base64;
+#[cfg(feature = "sasl")]
+pub mod sasl;
+
 use std::collections::HashSet;
 
 use async_native_tls::{TlsConnector, TlsStream};
@@ -83,7 +88,7 @@ pub enum ClientState {
     None,
 }
 
-pub struct Client<S: Write + Read + Unpin> {
+pub struct Client<S: Write + Read + Unpin + Send> {
     inner: Option<PopStream<S>>,
     capabilities: Capabilities,
     marked_as_del: Vec<usize>,
@@ -93,7 +98,7 @@ pub struct Client<S: Write + Read + Unpin> {
 }
 
 /// Creates a client from a given socket connection.
-async fn create_client_from_socket<S: Read + Write + Unpin>(
+async fn create_client_from_socket<S: Read + Write + Unpin + Send>(
     socket: PopStream<S>,
 ) -> Result<Client<S>> {
     let mut client = Client {
@@ -127,7 +132,7 @@ async fn create_client_from_socket<S: Read + Write + Unpin>(
 ///     client.quit().unwrap();
 /// }
 /// ```
-pub async fn new<S: Read + Write + Unpin>(stream: S) -> Result<Client<S>> {
+pub async fn new<S: Read + Write + Unpin + Send>(stream: S) -> Result<Client<S>> {
     let socket = PopStream::new(stream);
 
     create_client_from_socket(socket).await
@@ -159,7 +164,7 @@ pub async fn connect_plain<A: ToSocketAddrs>(addr: A) -> Result<Client<TcpStream
     create_client_from_socket(socket).await
 }
 
-impl<S: Read + Write + Unpin> Client<S> {
+impl<S: Read + Write + Unpin + Send> Client<S> {
     /// Check if the client is in the correct state and return a mutable reference to the tcp connection.
     fn inner_mut(&mut self) -> Result<&mut PopStream<S>> {
         match self.inner.as_mut() {
@@ -529,31 +534,57 @@ impl<S: Read + Write + Unpin> Client<S> {
         }
     }
 
-    // pub async fn auth<A: AsRef<str>, U: AsRef<str>>(
-    //     &mut self,
-    //     auth_type: A,
-    //     token: U,
-    // ) -> Result<Text> {
-    //     self.check_client_state(ClientState::Authentication)?;
+    /// ### AUTH
+    ///
+    /// Requires an [sasl::Authenticator] to work. One could implement this themeselves for any given mechanism, look at the documentation for this trait.
+    ///
+    /// If a common mechanism is needed, it can probably be found in the [sasl] module.
+    ///
+    /// The AUTH command indicates an authentication mechanism to the server.  If the server supports the requested authentication mechanism, it performs an authentication protocol exchange to authenticate and identify the user. Optionally, it also negotiates a protection mechanism for subsequent protocol interactions.  If the requested authentication mechanism is not supported, the server should reject the AUTH command by sending a negative response.
+    ///
+    /// The authentication protocol exchange consists of a series of server challenges and client answers that are specific to the authentication mechanism.  A server challenge, otherwise known as a ready response, is a line consisting of a "+" character followed by a single space and a BASE64 encoded string.  The client answer consists of a line containing a BASE64 encoded string.  If the client wishes to cancel an authentication exchange, it should issue a line with a single "*".  If the server receives such an answer, it must reject the AUTH command by sending a negative response.
+    ///
+    /// A protection mechanism provides integrity and privacy protection to the protocol session.  If a protection mechanism is negotiated, it is applied to all subsequent data sent over the connection.  The protection mechanism takes effect immediately following the CRLF that concludes the authentication exchange for the client, and the CRLF of the positive response for the server.  Once the protection mechanism is in effect, the stream of command and response octets is processed into buffers of ciphertext.  Each buffer is transferred over the connection as a stream of octets prepended with a four octet field in network byte order that represents the length of the following data. The maximum ciphertext buffer length is defined by the protection mechanism.
+    ///
+    /// The server is not required to support any particular authentication mechanism, nor are authentication mechanisms required to support any protection mechanisms.  If an AUTH command fails with a negative response, the session remains in the AUTHORIZATION state and client may try another authentication mechanism by issuing another AUTH command, or may attempt to authenticate by using the USER/PASS or APOP commands.  In other words, the client may request authentication types in decreasing order of preference, with the USER/PASS or APOP command as a last resort.
+    #[cfg(feature = "sasl")]
+    pub async fn auth<A: sasl::Authenticator + Sync>(&mut self, authenticator: A) -> Result<Text> {
+        self.check_client_state(ClientState::Authentication)?;
 
-    //     self.has_read_greeting()?;
+        self.has_read_greeting()?;
 
-    //     let mut request: Request = Auth.into();
+        let mut request: Request = Auth.into();
 
-    //     request.add_arg(auth_type.as_ref());
+        let mechanism = authenticator.mechanism();
 
-    //     let response = self.send_request(request).await?;
+        request.add_arg(mechanism);
 
-    //     self.state = ClientState::Transaction;
+        if let Some(arg) = authenticator.auth() {
+            request.add_arg(crate::base64::encode(arg))
+        }
 
-    //     match response {
-    //         Response::Message(resp) => Ok(resp),
-    //         _ => err!(
-    //             ErrorKind::UnexpectedResponse,
-    //             "Did not received the expected auth response"
-    //         ),
-    //     }
-    // }
+        let stream = self.inner_mut()?;
+
+        stream.encode(&request).await?;
+
+        let communicator = sasl::Communicator::new(stream);
+
+        authenticator.handle(communicator).await?;
+
+        let message = match stream.read_response(request).await? {
+            Response::Message(message) => message,
+            _ => err!(
+                ErrorKind::UnexpectedResponse,
+                "Did not received the expected auith response"
+            ),
+        };
+
+        self.update_capabilities().await;
+
+        self.state = ClientState::Transaction;
+
+        Ok(message)
+    }
 
     /// ## USER & PASS
     ///

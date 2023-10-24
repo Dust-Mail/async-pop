@@ -22,14 +22,16 @@ pub enum Command {
     Quit,
     Capa,
     Greet,
-    Other(String),
+    #[cfg(feature = "sasl")]
+    Base64(String),
 }
 
 impl Display for Command {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Other(other) => {
-                write!(f, "{}", other)?;
+            #[cfg(feature = "sasl")]
+            Self::Base64(other) => {
+                write!(f, "{}", crate::base64::encode(other))?;
             }
             _ => {
                 for (key, value) in Self::definitions().into_iter() {

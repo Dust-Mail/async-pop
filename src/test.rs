@@ -10,6 +10,7 @@ use tokio::net::TcpStream;
 
 use crate::{
     response::{capability::Capability, list::ListResponse, types::DataType, uidl::UidlResponse},
+    sasl::PlainAuthenticator,
     ClientState,
 };
 
@@ -89,6 +90,25 @@ async fn e2e_connect() {
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
 async fn e2e_login() {
     let mut client = create_logged_in_client().await;
+
+    assert_eq!(client.get_state(), &ClientState::Transaction);
+
+    client.quit().await.unwrap();
+}
+
+#[cfg_attr(feature = "runtime-tokio", tokio::test)]
+#[cfg_attr(feature = "runtime-async-std", async_std::test)]
+async fn e2e_auth() {
+    let client_info = create_client_info();
+
+    let server = client_info.server.as_ref();
+    let port = client_info.port;
+
+    let mut client = super::connect_plain((server, port)).await.unwrap();
+
+    let plain_auth = PlainAuthenticator::new(client_info.username, client_info.password);
+
+    client.auth(plain_auth).await.unwrap();
 
     assert_eq!(client.get_state(), &ClientState::Transaction);
 

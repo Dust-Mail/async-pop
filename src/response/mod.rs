@@ -37,6 +37,8 @@ pub enum Response {
     Uidl(UidlResponse),
     Capability(Vec<Capability>),
     Message(Text),
+    #[cfg(feature = "sasl")]
+    Challenge(Text),
     Err(Text),
 }
 

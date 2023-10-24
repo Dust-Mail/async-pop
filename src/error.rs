@@ -26,6 +26,8 @@ pub enum ErrorKind {
     ParseInt(ParseIntError),
     ParseString(Utf8Error),
     ServerError(String),
+    #[cfg(feature = "sasl")]
+    DecodeBase64(base64::DecodeError),
     NotConnected,
     ShouldNotBeConnected,
     IncorrectStateForCommand,
@@ -114,6 +116,13 @@ impl From<ParseIntError> for Error {
 impl From<Utf8Error> for Error {
     fn from(error: Utf8Error) -> Self {
         Self::new(ErrorKind::ParseString(error), "Failed to parse string")
+    }
+}
+
+#[cfg(feature = "sasl")]
+impl From<base64::DecodeError> for Error {
+    fn from(error: base64::DecodeError) -> Self {
+        Self::new(ErrorKind::DecodeBase64(error), "Failed to decode base64")
     }
 }
 
