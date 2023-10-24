@@ -1,3 +1,46 @@
+/*!
+# Sasl
+
+This module provides support for SASL (Simple Authentication and Security Layer), as specified in [RFC4422](https://datatracker.ietf.org/doc/html/rfc4422)
+
+It allows one to use these mechanisms to authenticate with a Pop3 compatible server and implement more mechanisms if they are needed.
+
+The mechanisms for PLAIN and XOAUTH2 are already present as they are commonly used.
+
+Implementing a mechanism is simple:
+
+```rust,ignore
+pub struct MyAuthenticator {
+    username: String,
+    secret_token: String,
+}
+
+impl Authenticator for MyAuthenticator {
+    fn mechanism(&self) -> &str {
+        "SUPER_COOL_MECHANISM"
+    }
+
+    fn auth(&self) -> Option<String> {
+        // Specify your cool format
+        Some(format!("\x00{}\x00{}", self.username, self.secret_token))
+    }
+
+    async fn handle<'a, S: Read + Write + Unpin + Send>(
+        &self,
+        communicator: Communicator<'a, S>,
+    ) -> Result<()> {
+        let challenge = communicator.next_challenge().await?;
+
+        let response = mechanism_lib::handle_challenge(challenge)?;
+
+        communicator.send(response).await?;
+
+        Ok(())
+    }
+}
+```
+*/
+
 use std::collections::VecDeque;
 
 use async_trait::async_trait;
@@ -79,7 +122,9 @@ pub trait Authenticator {
         None
     }
 
-    /// Get
+    /// Handle a handshake conversation between the server and the client.
+    ///
+    /// The [Communicator] allows you to send and receive data needed for authentication
     async fn handle<'a, S: Read + Write + Unpin + Send>(
         &self,
         _communicator: Communicator<'a, S>,

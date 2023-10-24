@@ -25,7 +25,7 @@ pub(crate) fn parse<'a>(input: &'a [u8], request: &Command) -> IResult<&'a [u8],
 
     #[cfg(feature = "sasl")]
     match request {
-        Command::Base64(_) => match rfc1734::auth(input) {
+        Command::Base64(_) | Command::Auth => match rfc1734::auth(input) {
             Ok((input, base64_challenge)) => {
                 if let Ok(challenge) = crate::base64::decode(base64_challenge) {
                     return Ok((input, Response::Challenge(challenge.into())));

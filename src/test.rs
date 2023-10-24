@@ -10,7 +10,6 @@ use tokio::net::TcpStream;
 
 use crate::{
     response::{capability::Capability, list::ListResponse, types::DataType, uidl::UidlResponse},
-    sasl::PlainAuthenticator,
     ClientState,
 };
 
@@ -98,6 +97,7 @@ async fn e2e_login() {
 
 #[cfg_attr(feature = "runtime-tokio", tokio::test)]
 #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+#[cfg(feature = "sasl")]
 async fn e2e_auth() {
     let client_info = create_client_info();
 
@@ -106,7 +106,8 @@ async fn e2e_auth() {
 
     let mut client = super::connect_plain((server, port)).await.unwrap();
 
-    let plain_auth = PlainAuthenticator::new(client_info.username, client_info.password);
+    let plain_auth =
+        crate::sasl::PlainAuthenticator::new(client_info.username, client_info.password);
 
     client.auth(plain_auth).await.unwrap();
 
