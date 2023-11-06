@@ -69,6 +69,7 @@ use response::{
     uidl::UidlResponse,
     Response,
 };
+use sasl::PlainAuthenticator;
 use stream::PopStream;
 
 use crate::{
@@ -534,6 +535,25 @@ impl<S: Read + Write + Unpin + Send> Client<S> {
         }
     }
 
+    pub fn has_auth_mechanism<M: AsRef<[u8]>>(&self, mechanism: M) -> bool {
+        for capa in &self.capabilities {
+            match capa {
+                Capability::Sasl(supported_mechanisms) => {
+                    for supported_mechanism in supported_mechanisms {
+                        if supported_mechanism.to_ascii_lowercase()
+                            == mechanism.as_ref().to_ascii_lowercase()
+                        {
+                            return true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        false
+    }
+
     /// ### AUTH
     ///
     /// Requires an [sasl::Authenticator] to work. One could implement this themeselves for any given mechanism, look at the documentation for this trait.
@@ -615,10 +635,13 @@ impl<S: Read + Write + Unpin + Send> Client<S> {
     ) -> Result<(Text, Text)> {
         self.check_client_state(ClientState::Authentication)?;
 
-        // self.check_capability(vec![
-        //     Capability::User,
-        //     Capability::Sasl(vec![String::from("PLAIN")]),
-        // ])?;
+        if self.has_auth_mechanism("PLAIN") {
+            let plain_auth = PlainAuthenticator::new(user.as_ref(), password.as_ref());
+
+            if let Ok(text) = self.auth(plain_auth).await {
+                return Ok((text, Bytes::new().into()));
+            }
+        }
 
         self.has_read_greeting()?;
 
