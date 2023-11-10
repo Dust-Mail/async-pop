@@ -7,7 +7,6 @@ use std::{
 };
 
 use crate::runtime::io::Error as IoError;
-use async_native_tls::Error as TlsError;
 
 macro_rules! err {
     ($kind:expr, $($arg:tt)*) => {{
@@ -21,7 +20,10 @@ macro_rules! err {
 
 #[derive(Debug)]
 pub enum ErrorKind {
-    Tls(TlsError),
+    #[cfg(feature = "async-native-tls")]
+    Tls(async_native_tls::Error),
+    #[cfg(feature = "async-rustls")]
+    InvalidDnsName,
     Io(IoError),
     ParseInt(ParseIntError),
     ParseString(Utf8Error),
@@ -92,7 +94,8 @@ impl fmt::Display for Error {
     }
 }
 
-impl From<TlsError> for Error {
+#[cfg(feature = "async-native-tls")]
+impl From<async_native_tls::Error> for Error {
     fn from(tls_error: async_native_tls::Error) -> Self {
         Self::new(
             ErrorKind::Tls(tls_error),

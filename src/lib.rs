@@ -49,6 +49,9 @@ pub mod response;
 mod runtime;
 mod stream;
 
+#[cfg(feature = "tls")]
+mod tls;
+
 #[cfg(feature = "sasl")]
 mod base64;
 #[cfg(feature = "sasl")]
@@ -56,7 +59,6 @@ pub mod sasl;
 
 use std::collections::HashSet;
 
-use async_native_tls::{TlsConnector, TlsStream};
 use bytes::Bytes;
 use command::Command::*;
 use error::{ErrorKind, Result};
@@ -140,14 +142,17 @@ pub async fn new<S: Read + Write + Unpin + Send>(stream: S) -> Result<Client<S>>
 }
 
 /// Create a new pop3 client with a tls connection.
-pub async fn connect<A: ToSocketAddrs, D: AsRef<str>>(
+#[cfg(feature = "tls")]
+pub async fn connect<'a, A: ToSocketAddrs, D: AsRef<str>, C: Into<tls::TlsConnector<'a>>>(
     addr: A,
     domain: D,
-    tls_connector: &TlsConnector,
-) -> Result<Client<TlsStream<TcpStream>>> {
+    tls: C,
+) -> Result<Client<impl tls::TlsStream<TcpStream>>> {
     let tcp_stream = TcpStream::connect(addr).await?;
 
-    let tls_stream = tls_connector.connect(domain.as_ref(), tcp_stream).await?;
+    let tls_connector: tls::TlsConnector<'a> = tls.into();
+
+    let tls_stream = tls_connector.connect(domain, tcp_stream).await?;
 
     let socket = PopStream::new(tls_stream);
 

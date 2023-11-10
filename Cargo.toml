@@ -9,7 +9,8 @@ edition = "2021"
 rust-version = "1.65.0"
 
 [dependencies]
-async-native-tls = { version = "0.5.0", default-features = false }
+async-native-tls = { version = "0.5.0", optional = true, default-features = false }
+async-rustls = { version = "0.4.1", optional = true }
 async-std = { version = "1.12.0", features = ["attributes"], optional = true }
 async-trait = { version = "0.1.74", optional = true }
 base64 = { version = "0.21.5", optional = true }
@@ -29,8 +30,13 @@ env_logger = "0.10.0"
 dotenv = "0.15"
 
 [features]
-default = ["runtime-async-std", "sasl"]
+default = ["runtime-async-std", "sasl", "async-native-tls"]
+
+tls = []
+async-rustls = ["tls", "dep:async-rustls"]
+async-native-tls = ["tls", "dep:async-native-tls"]
+
 sasl = ["dep:base64", "dep:async-trait"]
 
-runtime-async-std = ["async-std", "async-native-tls/runtime-async-std"]
-runtime-tokio = ["tokio", "async-native-tls/runtime-tokio"]
+runtime-async-std = ["async-std", "async-native-tls?/runtime-async-std"]
+runtime-tokio = ["tokio", "async-native-tls?/tokio"]

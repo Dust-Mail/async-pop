@@ -1,12 +1,8 @@
 use std::env;
 
-// use async_native_tls::{TlsConnector, TlsStream};
-#[cfg(feature = "runtime-async-std")]
-use async_std::net::TcpStream;
+use crate::runtime::net::TcpStream;
 use dotenv::dotenv;
 use log::info;
-#[cfg(feature = "runtime-tokio")]
-use tokio::net::TcpStream;
 
 use crate::{
     response::{capability::Capability, list::ListResponse, types::DataType, uidl::UidlResponse},
@@ -49,7 +45,7 @@ async fn create_logged_in_client() -> Client<TcpStream> {
     client
 }
 
-// async fn create_logged_in_client_tls() -> Client<TlsStream<TcpStream>> {
+// async fn create_logged_in_client_tls() -> Client<impl crate::tls::TlsStream<TcpStream>> {
 //     let client_info = create_client_info();
 //     let server = client_info.server.as_ref();
 //     let port = client_info.port;
@@ -57,7 +53,7 @@ async fn create_logged_in_client() -> Client<TcpStream> {
 //     let username = client_info.username;
 //     let password = client_info.password;
 
-//     let tls = TlsConnector::new();
+//     let tls = async_native_tls::TlsConnector::new();
 
 //     let mut client = super::connect((server, port), server, &tls).await.unwrap();
 
