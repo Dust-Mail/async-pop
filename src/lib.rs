@@ -71,6 +71,7 @@ use response::{
     uidl::UidlResponse,
     Response,
 };
+#[cfg(feature = "sasl")]
 use sasl::PlainAuthenticator;
 use stream::PopStream;
 
@@ -640,6 +641,7 @@ impl<S: Read + Write + Unpin + Send> Client<S> {
     ) -> Result<(Text, Text)> {
         self.check_client_state(ClientState::Authentication)?;
 
+        #[cfg(feature = "sasl")]
         if self.has_auth_mechanism("PLAIN") {
             let plain_auth = PlainAuthenticator::new(user.as_ref(), password.as_ref());
 

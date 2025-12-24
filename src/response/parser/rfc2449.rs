@@ -23,9 +23,16 @@ fn sasl_mechanism(input: &[u8]) -> IResult<&[u8], &[u8]> {
         tag_no_case("GSSAPI"),
         tag_no_case("SKEY"),
         tag_no_case("CRAM-MD5"),
+        tag_no_case("DIGEST-MD5"),
         tag_no_case("PLAIN"),
+        tag_no_case("LOGIN"),          // Add LOGIN auth mechanism support
         tag_no_case("XOAUTH2"),
         tag_no_case("OAUTHBEARER"),
+        tag_no_case("NTLM"),           // Add NTLM support
+        tag_no_case("ANONYMOUS"),      // Add ANONYMOUS support
+        tag_no_case("EXTERNAL"),       // Add EXTERNAL support
+        tag_no_case("SCRAM-SHA-1"),    // Add SCRAM-SHA-1 support
+        tag_no_case("SCRAM-SHA-256"),  // Add SCRAM-SHA-256 support
     ))(input)
 }
 
@@ -155,6 +162,68 @@ mod test {
             }
             _ => {
                 unreachable!()
+            }
+        }
+    }
+
+    #[test]
+    fn test_sasl_plain_login() {
+        // Test SASL with PLAIN and LOGIN mechanisms (used by QQ Enterprise Mail)
+        let data = b"SASL PLAIN LOGIN\r\n";
+
+        let (input, capa) = capability(data).unwrap();
+
+        assert!(input.is_empty());
+
+        match capa {
+            Capability::Sasl(mechanisms) => {
+                assert_eq!(mechanisms.len(), 2);
+                assert_eq!(mechanisms[0].as_ref(), b"PLAIN");
+                assert_eq!(mechanisms[1].as_ref(), b"LOGIN");
+            }
+            _ => {
+                unreachable!("Expected Sasl capability")
+            }
+        }
+    }
+
+    #[test]
+    fn test_sasl_multiple_mechanisms() {
+        // Test multiple SASL mechanisms
+        let data = b"SASL PLAIN LOGIN CRAM-MD5 DIGEST-MD5\r\n";
+
+        let (input, capa) = capability(data).unwrap();
+
+        assert!(input.is_empty());
+
+        match capa {
+            Capability::Sasl(mechanisms) => {
+                assert_eq!(mechanisms.len(), 4);
+            }
+            _ => {
+                unreachable!("Expected Sasl capability")
+            }
+        }
+    }
+
+    #[test]
+    fn test_full_capa_response_with_sasl_login() {
+        // Test full CAPA response from QQ Enterprise Mail
+        let data = b"+OK Capability list follows\r\nTOP\r\nUSER\r\nSASL PLAIN LOGIN\r\nEXPIRE 60\r\nUIDL\r\n.\r\n";
+
+        let (input, response) = capability_response(data).unwrap();
+
+        assert!(input.is_empty());
+
+        match response {
+            Response::Capability(caps) => {
+                assert_eq!(caps.len(), 5);
+                // Verify SASL capability exists
+                let has_sasl = caps.iter().any(|c| matches!(c, Capability::Sasl(_)));
+                assert!(has_sasl, "Should have SASL capability");
+            }
+            _ => {
+                unreachable!("Expected Capability response")
             }
         }
     }
