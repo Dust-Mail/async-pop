@@ -25,14 +25,14 @@ fn sasl_mechanism(input: &[u8]) -> IResult<&[u8], &[u8]> {
         tag_no_case("CRAM-MD5"),
         tag_no_case("DIGEST-MD5"),
         tag_no_case("PLAIN"),
-        tag_no_case("LOGIN"),          // Add LOGIN auth mechanism support
+        tag_no_case("LOGIN"), // Add LOGIN auth mechanism support
         tag_no_case("XOAUTH2"),
         tag_no_case("OAUTHBEARER"),
-        tag_no_case("NTLM"),           // Add NTLM support
-        tag_no_case("ANONYMOUS"),      // Add ANONYMOUS support
-        tag_no_case("EXTERNAL"),       // Add EXTERNAL support
-        tag_no_case("SCRAM-SHA-1"),    // Add SCRAM-SHA-1 support
-        tag_no_case("SCRAM-SHA-256"),  // Add SCRAM-SHA-256 support
+        tag_no_case("NTLM"),          // Add NTLM support
+        tag_no_case("ANONYMOUS"),     // Add ANONYMOUS support
+        tag_no_case("EXTERNAL"),      // Add EXTERNAL support
+        tag_no_case("SCRAM-SHA-1"),   // Add SCRAM-SHA-1 support
+        tag_no_case("SCRAM-SHA-256"), // Add SCRAM-SHA-256 support
     ))(input)
 }
 
@@ -42,12 +42,7 @@ fn sasl(input: &[u8]) -> IResult<&[u8], Capability> {
     let (input, mechanisms) = separated_list0(space1, sasl_mechanism)(input)?;
     let (input, _) = eol(input)?;
 
-    let capa = Capability::Sasl(
-        mechanisms
-            .into_iter()
-            .map(|slice| Bytes::copy_from_slice(slice))
-            .collect(),
-    );
+    let capa = Capability::Sasl(mechanisms.into_iter().map(Bytes::copy_from_slice).collect());
 
     Ok((input, capa))
 }

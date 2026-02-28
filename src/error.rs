@@ -74,17 +74,11 @@ impl error::Error for Error {
     fn description(&self) -> &str {
         &self.message
     }
-
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self.kind() {
-            _ => None,
-        }
-    }
 }
 
-impl Into<String> for Error {
-    fn into(self) -> String {
-        self.message
+impl From<Error> for String {
+    fn from(val: Error) -> Self {
+        val.message
     }
 }
 

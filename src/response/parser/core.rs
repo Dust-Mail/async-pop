@@ -18,6 +18,6 @@ pub fn end_of_multiline(input: &[u8]) -> IResult<&[u8], ()> {
     Ok((input, ()))
 }
 
-pub fn message_parser<'a>(input: &'a [u8]) -> IResult<&'a [u8], Option<&'a [u8]>> {
+pub fn message_parser(input: &[u8]) -> IResult<&[u8], Option<&[u8]>> {
     terminated(opt(not_line_ending), eol)(input)
 }

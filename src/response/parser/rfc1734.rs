@@ -2,7 +2,7 @@ use nom::{bytes::streaming::tag, character::streaming::space1, IResult};
 
 use super::core::message_parser;
 
-pub(crate) fn auth<'a>(input: &'a [u8]) -> IResult<&'a [u8], &'a [u8]> {
+pub(crate) fn auth(input: &[u8]) -> IResult<&[u8], &[u8]> {
     let (input, _) = tag("+")(input)?;
     let (input, _) = space1(input)?;
     let (input, content) = message_parser(input)?;

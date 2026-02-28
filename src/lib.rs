@@ -262,9 +262,8 @@ impl<S: Read + Write + Unpin + Send> Client<S> {
     pub async fn uidl(&mut self, msg_number: Option<usize>) -> Result<UidlResponse> {
         self.check_capability(vec![Capability::Uidl])?;
 
-        match msg_number.as_ref() {
-            Some(msg_number) => self.check_deleted(msg_number)?,
-            None => {}
+        if let Some(msg_number) = msg_number.as_ref() {
+            self.check_deleted(msg_number)?
         };
 
         let mut request: Request = Uidl.into();
@@ -326,10 +325,7 @@ impl<S: Read + Write + Unpin + Send> Client<S> {
     pub fn is_deleted(&mut self, msg_number: &usize) -> bool {
         self.marked_as_del.sort();
 
-        match self.marked_as_del.binary_search(msg_number) {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        self.marked_as_del.binary_search(msg_number).is_ok()
     }
 
     fn check_deleted(&mut self, msg_number: &usize) -> Result<()> {
@@ -485,7 +481,7 @@ impl<S: Read + Write + Unpin + Send> Client<S> {
     pub async fn stat(&mut self) -> Result<Stat> {
         let response = self.send_request(Stat).await?;
 
-        match response.into() {
+        match response {
             Response::Stat(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,
@@ -543,17 +539,14 @@ impl<S: Read + Write + Unpin + Send> Client<S> {
 
     pub fn has_auth_mechanism<M: AsRef<[u8]>>(&self, mechanism: M) -> bool {
         for capa in &self.capabilities {
-            match capa {
-                Capability::Sasl(supported_mechanisms) => {
-                    for supported_mechanism in supported_mechanisms {
-                        if supported_mechanism.to_ascii_lowercase()
-                            == mechanism.as_ref().to_ascii_lowercase()
-                        {
-                            return true;
-                        }
+            if let Capability::Sasl(supported_mechanisms) = capa {
+                for supported_mechanism in supported_mechanisms {
+                    if supported_mechanism.to_ascii_lowercase()
+                        == mechanism.as_ref().to_ascii_lowercase()
+                    {
+                        return true;
                     }
                 }
-                _ => {}
             }
         }
 
@@ -749,7 +742,7 @@ impl<S: Read + Write + Unpin + Send> Client<S> {
     pub async fn capa(&mut self) -> Result<Capabilities> {
         let response = self.send_request(Capa).await?;
 
-        match response.into() {
+        match response {
             Response::Capability(resp) => Ok(resp),
             _ => err!(
                 ErrorKind::UnexpectedResponse,

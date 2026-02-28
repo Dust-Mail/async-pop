@@ -8,9 +8,9 @@ pub struct Request {
     args: Vec<String>,
 }
 
-impl Into<Command> for Request {
-    fn into(self) -> Command {
-        self.command
+impl From<Request> for Command {
+    fn from(val: Request) -> Self {
+        val.command
     }
 }
 
@@ -43,9 +43,9 @@ impl FromStr for Request {
 }
 
 impl Request {
-    pub fn new<A: Display>(command: Command, args: &Vec<A>) -> Self {
+    pub fn new<A: Display>(command: Command, args: &[A]) -> Self {
         Self {
-            command: command.into(),
+            command,
             args: args.iter().map(|arg| arg.to_string()).collect(),
         }
     }

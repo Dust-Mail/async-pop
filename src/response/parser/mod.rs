@@ -149,14 +149,9 @@ mod test {
         assert!(output.is_empty());
 
         match response {
-            Response::Uidl(uidl) => match uidl {
-                UidlResponse::Multiple(list) => {
-                    println!("{:?}", list);
-                }
-                _ => {
-                    unreachable!()
-                }
-            },
+            Response::Uidl(UidlResponse::Multiple(list)) => {
+                println!("{:?}", list);
+            }
             _ => {
                 unreachable!()
             }

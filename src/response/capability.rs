@@ -2,16 +2,11 @@ use bytes::Bytes;
 
 use super::types::{message::Text, number::Duration};
 
-#[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Clone)]
+#[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Clone, Default)]
 pub enum Expiration {
+    #[default]
     Never,
     Time(Duration),
-}
-
-impl Default for Expiration {
-    fn default() -> Self {
-        Self::Never
-    }
 }
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Clone)]

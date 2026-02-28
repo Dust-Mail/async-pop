@@ -163,11 +163,8 @@ async fn e2e_capa() {
     let capas = client.capa().await.unwrap();
 
     for capa in capas {
-        match capa {
-            Capability::LoginDelay(time) => {
-                println!("{}", time.value().unwrap().as_secs())
-            }
-            _ => {}
+        if let Capability::LoginDelay(time) = capa {
+            println!("{}", time.value().unwrap().as_secs())
         }
     }
 

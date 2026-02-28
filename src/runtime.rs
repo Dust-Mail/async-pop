@@ -1,6 +1,6 @@
 pub mod io {
     #[cfg(feature = "runtime-async-std")]
-    pub use async_std::io::{prelude::BufReadExt, BufRead, Error, Read, ReadExt, Write, WriteExt};
+    pub use async_std::io::{Error, Read, Write, WriteExt};
 
     #[cfg(feature = "runtime-tokio")]
     pub use tokio::io::{
@@ -18,10 +18,7 @@ pub mod net {
 }
 
 #[cfg(feature = "runtime-async-std")]
-pub use async_std::future::timeout;
-
-#[cfg(feature = "runtime-async-std")]
-pub use std::time::{Duration, Instant};
+pub use std::time::Instant;
 
 #[cfg(feature = "runtime-tokio")]
 pub use tokio::time::{timeout, Duration, Instant};

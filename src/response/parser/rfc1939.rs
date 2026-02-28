@@ -24,7 +24,7 @@ use crate::{
 
 use super::core::{end_of_multiline, eol, message_parser};
 
-pub(crate) fn status<'a>(input: &'a [u8]) -> IResult<&'a [u8], Status> {
+pub(crate) fn status(input: &[u8]) -> IResult<&[u8], Status> {
     terminated(
         map(alt((value(true, tag(OK)), value(false, tag(ERR)))), |val| {
             Status::new(val)
@@ -67,11 +67,8 @@ fn list_stats(input: &[u8]) -> IResult<&[u8], Stat> {
     Ok((input, stats))
 }
 
-pub(crate) fn list_response<'a>(input: &'a [u8]) -> IResult<&'a [u8], Response> {
-    let (input, stats) = alt((
-        map(list_stats, |stats| Some(stats)),
-        map(message_parser, |_| None),
-    ))(input)?;
+pub(crate) fn list_response(input: &[u8]) -> IResult<&[u8], Response> {
+    let (input, stats) = alt((map(list_stats, Some), map(message_parser, |_| None)))(input)?;
 
     let (input, (items, _end)) = many_till(preceded(opt(tag(".")), stat), end_of_multiline)(input)?;
 
@@ -84,7 +81,7 @@ struct UniqueIdParser;
 
 impl UniqueIdParser {
     fn is_valid_char(c: u8) -> bool {
-        c >= 0x21 && c <= 0x7E
+        (0x21..=0x7E).contains(&c)
     }
 
     pub fn parse(input: &[u8]) -> IResult<&[u8], &[u8]> {
