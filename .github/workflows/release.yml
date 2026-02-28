@@ -6,7 +6,7 @@ permissions:
 on:
   push:
     tags:
-      - 'v*.*.*' # Match any tag with the format vMAJOR.MINOR.PATCH
+      - "v*.*.*" # Match any tag with the format vMAJOR.MINOR.PATCH
 
 jobs:
   release:
@@ -31,12 +31,12 @@ jobs:
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.65.0
+          toolchain: 1.93.1
           override: true
-      
+
       - name: Fetch
         run: cargo fetch --locked
-      
+
       - name: Publish
         run: cargo publish
         env:
