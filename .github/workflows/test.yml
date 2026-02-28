@@ -7,7 +7,6 @@ on:
       - .github/workflows/test.yml
       - Cargo.toml
       - Cargo.lock
-  # pull_request:
 
 jobs:
   test:
@@ -17,10 +16,10 @@ jobs:
       greenmail:
         image: greenmail/standalone:1.6.12
         ports:
-          - '3110:3110'
+          - "3110:3110"
         env:
-            GREENMAIL_OPTS: "-Dgreenmail.verbose -Dgreenmail.setup.test.pop3 -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=test:localhost"
-            JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Xmx512m"
+          GREENMAIL_OPTS: "-Dgreenmail.verbose -Dgreenmail.setup.test.pop3 -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=test:localhost"
+          JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Xmx512m"
 
     steps:
       - name: Download code
@@ -40,12 +39,12 @@ jobs:
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.65.0
+          toolchain: 1.93.1
           override: true
-      
+
       - name: Fetch
         run: cargo fetch --locked
-      
+
       - name: Build
         run: cargo build
 
