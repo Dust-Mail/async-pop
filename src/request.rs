@@ -57,4 +57,8 @@ impl Request {
     pub fn command(&self) -> &Command {
         &self.command
     }
+
+    pub(crate) fn arg_count(&self) -> usize {
+        self.args.len()
+    }
 }

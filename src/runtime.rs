@@ -3,10 +3,7 @@ pub mod io {
     pub use async_std::io::{Error, Read, Write, WriteExt};
 
     #[cfg(feature = "runtime-tokio")]
-    pub use tokio::io::{
-        AsyncBufRead as BufRead, AsyncBufReadExt as BufReadExt, AsyncRead as Read,
-        AsyncReadExt as ReadExt, AsyncWrite as Write, AsyncWriteExt as WriteExt, Error,
-    };
+    pub use tokio::io::{AsyncRead as Read, AsyncWrite as Write, AsyncWriteExt as WriteExt, Error};
 }
 
 pub mod net {
@@ -21,4 +18,4 @@ pub mod net {
 pub use std::time::Instant;
 
 #[cfg(feature = "runtime-tokio")]
-pub use tokio::time::{timeout, Duration, Instant};
+pub use tokio::time::Instant;

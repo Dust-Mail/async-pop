@@ -365,7 +365,10 @@ impl<S: Read + Write + Unpin + Send> Client<S> {
         let response = self.send_request(request).await?;
 
         match response {
-            Response::Message(resp) => Ok(resp),
+            Response::Message(resp) => {
+                self.marked_as_del.push(msg_number);
+                Ok(resp)
+            }
             _ => err!(
                 ErrorKind::UnexpectedResponse,
                 "Did not received the expected dele response"

@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use nom::error::{Error as NomError, ErrorKind};
 use nom::{
     branch::alt,
     bytes::streaming::{tag, take_until, take_while, take_while_m_n},
@@ -6,7 +7,7 @@ use nom::{
         is_alphanumeric,
         streaming::{char, digit1, not_line_ending, space0, space1},
     },
-    combinator::{map, opt, value},
+    combinator::{map, map_res, opt, value},
     multi::many_till,
     sequence::{delimited, preceded, terminated, tuple},
     IResult,
@@ -43,6 +44,29 @@ fn stat(input: &[u8]) -> IResult<&[u8], Stat> {
     Ok((input, Stat::new(count, size)))
 }
 
+fn message_number(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    map_res(digit1, |bytes: &[u8]| {
+        let number = std::str::from_utf8(bytes)
+            .ok()
+            .and_then(|text| text.parse::<usize>().ok());
+
+        match number {
+            Some(value) if value > 0 => Ok(bytes),
+            _ => Err(()),
+        }
+    })(input)
+}
+
+fn scan_listing(input: &[u8]) -> IResult<&[u8], Stat> {
+    let (input, count) = message_number(input)?;
+    let (input, _) = space1(input)?;
+    let (input, size) = digit1(input)?;
+    let (input, _) = opt(not_line_ending)(input)?;
+    let (input, _) = eol(input)?;
+
+    Ok((input, Stat::new(count, size)))
+}
+
 pub(crate) fn stat_response(input: &[u8]) -> IResult<&[u8], Response> {
     let (input, stats) = stat(input)?;
 
@@ -68,9 +92,18 @@ fn list_stats(input: &[u8]) -> IResult<&[u8], Stat> {
 }
 
 pub(crate) fn list_response(input: &[u8]) -> IResult<&[u8], Response> {
-    let (input, stats) = alt((map(list_stats, Some), map(message_parser, |_| None)))(input)?;
+    let (input, (stats, first_item)) = alt((
+        map(list_stats, |stats| (Some(stats), None)),
+        map(scan_listing, |item| (None, Some(item))),
+        map(message_parser, |_| (None, None)),
+    ))(input)?;
 
-    let (input, (items, _end)) = many_till(preceded(opt(tag(".")), stat), end_of_multiline)(input)?;
+    let (input, (mut items, _end)) =
+        many_till(preceded(opt(tag(".")), scan_listing), end_of_multiline)(input)?;
+
+    if let Some(first_item) = first_item {
+        items.insert(0, first_item);
+    }
 
     let list = List::new(stats, items);
 
@@ -90,7 +123,7 @@ impl UniqueIdParser {
 }
 
 fn uidl(input: &[u8]) -> IResult<&[u8], UniqueId> {
-    let (input, index) = digit1(input)?;
+    let (input, index) = message_number(input)?;
     let (input, _) = space1(input)?;
     let (input, id) = UniqueIdParser::parse(input)?;
     let (input, _) = eol(input)?;
@@ -99,9 +132,17 @@ fn uidl(input: &[u8]) -> IResult<&[u8], UniqueId> {
 }
 
 pub(crate) fn uidl_list_response(input: &[u8]) -> IResult<&[u8], Response> {
-    let (input, message) = message_parser(input)?;
+    let (input, (message, first_item)) = alt((
+        map(uidl, |item| (None, Some(item))),
+        map(message_parser, |message| (message, None)),
+    ))(input)?;
 
-    let (input, (list, _end)) = many_till(preceded(opt(tag(".")), uidl), end_of_multiline)(input)?;
+    let (input, (mut list, _end)) =
+        many_till(preceded(opt(tag(".")), uidl), end_of_multiline)(input)?;
+
+    if let Some(first_item) = first_item {
+        list.insert(0, first_item);
+    }
 
     let list = Uidl::new(message, list);
 
@@ -111,7 +152,25 @@ pub(crate) fn uidl_list_response(input: &[u8]) -> IResult<&[u8], Response> {
 pub(crate) fn uidl_response(input: &[u8]) -> IResult<&[u8], Response> {
     let (input, unique_id) = uidl(input)?;
 
+    if looks_like_multiline_continuation(input) {
+        return Err(nom::Err::Error(NomError::new(input, ErrorKind::Verify)));
+    }
+
     Ok((input, Response::Uidl(unique_id.into())))
+}
+
+pub(crate) fn list_single_response(input: &[u8]) -> IResult<&[u8], Response> {
+    let (input, stats) = scan_listing(input)?;
+
+    if looks_like_multiline_continuation(input) {
+        return Err(nom::Err::Error(NomError::new(input, ErrorKind::Verify)));
+    }
+
+    Ok((input, Response::Stat(stats)))
+}
+
+fn looks_like_multiline_continuation(input: &[u8]) -> bool {
+    matches!(input.first(), Some(b'0'..=b'9') | Some(b'.'))
 }
 
 pub(crate) fn rfc822_response(input: &[u8]) -> IResult<&[u8], Response> {

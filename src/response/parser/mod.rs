@@ -10,13 +10,13 @@ use crate::command::Command;
 
 use self::{
     rfc1939::{
-        error_response, list_response, rfc822_response, stat_response, status, string_response,
-        uidl_list_response, uidl_response,
+        error_response, list_response, list_single_response, rfc822_response, stat_response,
+        status, string_response, uidl_list_response, uidl_response,
     },
     rfc2449::capability_response,
 };
 
-use super::Response;
+use super::{Response, ResponseShape};
 
 pub(crate) fn parse<'a>(input: &'a [u8], request: &Command) -> IResult<&'a [u8], Response> {
     if input.is_empty() {
@@ -43,10 +43,51 @@ pub(crate) fn parse<'a>(input: &'a [u8], request: &Command) -> IResult<&'a [u8],
         match request {
             Command::Stat => stat_response(input),
             Command::Uidl => alt((uidl_response, uidl_list_response))(input),
-            Command::List => alt((stat_response, list_response))(input),
+            Command::List => alt((list_single_response, list_response))(input),
             Command::Retr | Command::Top => rfc822_response(input),
             Command::Capa => capability_response(input),
             _ => string_response(input),
+        }
+    } else {
+        error_response(input)
+    }
+}
+
+pub(crate) fn parse_shape<'a>(
+    input: &'a [u8],
+    shape: &ResponseShape,
+) -> IResult<&'a [u8], Response> {
+    if input.is_empty() {
+        return Err(nom::Err::Incomplete(nom::Needed::Unknown));
+    }
+
+    #[cfg(feature = "sasl")]
+    if matches!(shape, ResponseShape::Auth) {
+        match rfc1734::auth(input) {
+            Ok((input, base64_challenge)) => {
+                if let Ok(challenge) = crate::base64::decode(base64_challenge) {
+                    return Ok((input, Response::Challenge(challenge.into())));
+                }
+            }
+            Err(nom::Err::Incomplete(needed)) => return Err(nom::Err::Incomplete(needed)),
+            Err(_) => {}
+        }
+    }
+
+    let (input, status) = status(input)?;
+
+    if status.success() {
+        match shape {
+            ResponseShape::Message | ResponseShape::Greeting => string_response(input),
+            ResponseShape::Stat => stat_response(input),
+            ResponseShape::ListSingle => list_single_response(input),
+            ResponseShape::ListMulti => list_response(input),
+            ResponseShape::UidlSingle => uidl_response(input),
+            ResponseShape::UidlMulti => uidl_list_response(input),
+            ResponseShape::Bytes => rfc822_response(input),
+            ResponseShape::Capability => capability_response(input),
+            #[cfg(feature = "sasl")]
+            ResponseShape::Auth => string_response(input),
         }
     } else {
         error_response(input)
@@ -117,7 +158,22 @@ mod test {
 
         let result = parse(data, &Command::List);
 
-        assert!(result.is_err())
+        assert!(result.is_err());
+
+        let data = b"+OK 1 120\r\n2 200\r\n.\r\n+OK goodbye\r\n";
+
+        let (output, response) = parse(data, &Command::List).unwrap();
+
+        assert_eq!(output, b"+OK goodbye\r\n");
+
+        match response {
+            Response::List(list) => {
+                assert_eq!(list.items().len(), 2);
+            }
+            _ => {
+                panic!("LIST multiline response was parsed as a single-line response");
+            }
+        }
     }
 
     #[test]
@@ -156,6 +212,63 @@ mod test {
                 unreachable!()
             }
         }
+
+        let data =
+            b"+OK 1 whqtswO00WBw418f9t5JxYwZ\r\n2 QhdPYR:00WBw1Ph7x7\r\n.\r\n+OK goodbye\r\n";
+
+        let (output, response) = parse(data, &Command::Uidl).unwrap();
+
+        assert_eq!(output, b"+OK goodbye\r\n");
+
+        match response {
+            Response::Uidl(uidl) => match uidl {
+                UidlResponse::Multiple(list) => {
+                    assert_eq!(list.items().len(), 2);
+                }
+                _ => {
+                    panic!("UIDL multiline response was parsed as a single-line response");
+                }
+            },
+            _ => {
+                unreachable!()
+            }
+        }
+
+        let data = b"+OK 1 whqtswO00WBw418f9t5JxYwZ\r\n.\r\n+OK goodbye\r\n";
+
+        let (output, response) = parse(data, &Command::Uidl).unwrap();
+
+        assert_eq!(output, b"+OK goodbye\r\n");
+
+        match response {
+            Response::Uidl(uidl) => {
+                match uidl {
+                    UidlResponse::Multiple(list) => {
+                        assert_eq!(list.items().len(), 1);
+                    }
+                    _ => {
+                        panic!("Single-item UIDL multiline response was parsed as a single-line response");
+                    }
+                }
+            }
+            _ => {
+                unreachable!()
+            }
+        }
+    }
+
+    #[test]
+    fn test_list_rejects_zero_message_number() {
+        let data = b"+OK 1 messages (120 bytes)\r\n0 120\r\n.\r\n";
+
+        assert!(parse(data, &Command::List).is_err());
+    }
+
+    #[test]
+    fn test_uidl_rejects_zero_message_number() {
+        let data = b"+OK unique-id listing follows\r\n0 baduid\r\n.\r\n";
+
+        assert!(parse(data, &Command::Uidl).is_err());
     }
 
     #[test]
